@@ -195,6 +195,10 @@ textarea{width:100%;min-height:96px;padding:12px 14px;background:var(--card);
   border:1.5px solid var(--line);border-radius:11px;font-family:"IBM Plex Mono",monospace;
   font-size:14px;color:var(--ink);resize:vertical}
 .ekgwave{display:block;width:100%;height:200px;border:1.5px solid var(--line);border-radius:10px}
+.drop{border:1.5px dashed var(--line2);border-radius:12px;padding:14px;
+  transition:border-color .12s,background .12s}
+.drop.over{border-color:var(--trace);background:var(--trace-bg)}
+.drop summary::-webkit-details-marker{color:var(--ink3)}
 .ekgwave.uni{height:auto}
 
 /* ── 목록 ── */
@@ -902,6 +906,7 @@ function parseEkg(text){
   }
 
   const t=[], v=[], bp=[];
+  let expect=-1;
   for(let i=start;i<lines.length;i++){
     const c=splitCsv(lines[i]);
     // 심박동율은 전압이 빈 행에만 실려 오므로 먼저 읽는다
@@ -911,8 +916,12 @@ function parseEkg(text){
       v.push(Number(c[vi]));
       if(ti>=0 && NUMRE.test(c[ti]||"")) t.push(Number(c[ti]));
     }else{
+      // 머리글을 못 읽은 경우. PASCO는 채널마다 값이 빈 행을 섞어 내보내므로
+      // 숫자 칸 수가 다른 행은 다른 채널의 행으로 보고 버린다.
       const nums=c.filter(x=>NUMRE.test(x)).map(Number);
       if(!nums.length) continue;
+      if(expect<0) expect=nums.length;
+      else if(nums.length!==expect) continue;
       v.push(nums[nums.length-1]);
       if(nums.length>=2) t.push(nums[0]);
     }
@@ -1406,6 +1415,46 @@ function closeScan(){
 document.getElementById("btnScan").onclick=openScan;
 document.getElementById("btnScanClose").onclick=closeScan;
 
+/* 파일에서 읽기. 한글 윈도에서 내보내면 EUC-KR로 저장되는 경우가 있어,
+   UTF-8로 읽어 깨지면 EUC-KR로 다시 읽는다. */
+function readTextSmart(file){
+  return new Promise((res,rej)=>{
+    const done=buf=>{
+      let t=new TextDecoder("utf-8").decode(buf);
+      if(t.indexOf("\uFFFD")>=0){
+        try{ t=new TextDecoder("euc-kr").decode(buf); }catch(e){}
+      }
+      res(t);
+    };
+    if(file.arrayBuffer) file.arrayBuffer().then(done, rej);
+    else{                                   // 오래된 태블릿 대비
+      const fr=new FileReader();
+      fr.onload=()=>done(fr.result); fr.onerror=rej;
+      fr.readAsArrayBuffer(file);
+    }
+  });
+}
+function applyEkgText(text, name){
+  if(!target) return;
+  const p=parseEkg(text);
+  const g=prepEkg(p.v, p.hz);
+  if(!g){ toast("심전도 숫자를 찾지 못했습니다"); return; }
+  harvestFields();
+  target.m.ekg="Y";
+  target.m.ekgWave=g.wave; target.m.ekgRaw=g.raw;
+  target.m.ekgSec=g.sec;
+  target.m.ekgBpm=p.devBpm || g.bpm || undefined;
+  renderMeasure();
+  toast(`${name?name+" · ":""}${g.full.toFixed(1)}초 중 가장 깨끗한 ${g.sec.toFixed(1)}초를 담았습니다`);
+}
+function loadEkgFile(file){
+  if(!file || !target) return;
+  if(file.size > 40*1024*1024){ toast("파일이 너무 큽니다"); return; }
+  toast("파일을 읽는 중…");
+  readTextSmart(file).then(t=>applyEkgText(t, file.name))
+    .catch(()=>toast("파일을 읽지 못했습니다"));
+}
+
 function renderMeasure(){
   const box=document.getElementById("measureBody");
   if(!target){
@@ -1432,12 +1481,21 @@ function renderMeasure(){
       if(g.k==="ekg" && val==="Y"){
         const wv=m.ekgWave;
         h+=`<div style="margin-top:12px">
-          <div class="hint" style="margin-bottom:7px">PASCO에서 내보낸 CSV를 붙여 넣으세요.
-            시간·전압 두 열이면 심박도 같이 계산합니다.</div>
-          <textarea id="ekgIn" rows="3" placeholder="0.000, 0.512&#10;0.004, 0.518&#10;…"></textarea>
-          <div class="tools" style="margin-top:9px">
-            <button class="btn sm" id="btnEkgSet">파형 넣기</button>
-            ${wv&&wv.length?'<button class="btn sm warn" id="btnEkgClr">파형 지우기</button>':""}
+          <div class="drop" id="ekgDrop">
+            <div class="tools" style="margin:0 0 10px">
+              <label class="btn sm go" style="cursor:pointer">CSV 파일 고르기
+                <input type="file" id="ekgFile" accept=".csv,.txt,text/csv,text/plain" hidden></label>
+              ${wv&&wv.length?'<button class="btn sm warn" id="btnEkgClr">파형 지우기</button>':""}
+            </div>
+            <div class="hint">PASCO에서 내보낸 CSV를 고르세요. 이 칸에 <b>끌어다 놓아도</b> 됩니다.
+              시간 열이 있으면 심박도 같이 계산합니다.</div>
+            <details style="margin-top:10px">
+              <summary class="hint" style="cursor:pointer">파일 대신 붙여 넣기</summary>
+              <textarea id="ekgIn" rows="3" style="margin-top:8px" placeholder="0.000, 0.512&#10;0.004, 0.518&#10;…"></textarea>
+              <div class="tools" style="margin-top:9px">
+                <button class="btn sm" id="btnEkgSet">붙여 넣은 것 넣기</button>
+              </div>
+            </details>
           </div>
           ${wv&&wv.length?`<div style="margin-top:10px">
             <div class="hint" style="margin-bottom:5px">다듬은 파형</div>
@@ -1487,16 +1545,8 @@ document.getElementById("measureBody").addEventListener("click",e=>{
     p.classList.add("sel"); return;
   }
   if(e.target.id==="btnEkgSet" && target){
-    const p=parseEkg(document.getElementById("ekgIn").value);
-    const g=prepEkg(p.v, p.hz);
-    if(!g){ toast("숫자를 20개 이상 붙여 넣어야 합니다"); return; }
-    harvestFields();
-    target.m.ekg="Y";
-    target.m.ekgWave=g.wave; target.m.ekgRaw=g.raw;
-    target.m.ekgSec=g.sec;
-    target.m.ekgBpm=p.devBpm || g.bpm || undefined;
-    renderMeasure();
-    toast(`${g.full.toFixed(1)}초 중 가장 깨끗한 ${g.sec.toFixed(1)}초를 담았습니다`);
+    const el=document.getElementById("ekgIn");
+    applyEkgText(el?el.value:"", "");
     return;
   }
   if(e.target.id==="btnEkgClr" && target){
@@ -1509,6 +1559,24 @@ document.getElementById("measureBody").addEventListener("click",e=>{
   if(e.target.id==="btnSaveM") saveMeasure();
 });
 document.getElementById("measureBody").addEventListener("input",updateCalc);
+document.getElementById("measureBody").addEventListener("change",e=>{
+  if(e.target.id==="ekgFile" && e.target.files && e.target.files[0]) loadEkgFile(e.target.files[0]);
+});
+["dragenter","dragover"].forEach(ev=>
+  document.getElementById("measureBody").addEventListener(ev,e=>{
+    const d=e.target.closest && e.target.closest("#ekgDrop");
+    if(!d || !target) return;
+    e.preventDefault(); e.dataTransfer.dropEffect="copy"; d.classList.add("over");
+  }));
+["dragleave","drop"].forEach(ev=>
+  document.getElementById("measureBody").addEventListener(ev,e=>{
+    const d=document.getElementById("ekgDrop"); if(d) d.classList.remove("over");
+  }));
+document.getElementById("measureBody").addEventListener("drop",e=>{
+  const d=e.target.closest && e.target.closest("#ekgDrop");
+  const f=e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(d && f && target){ e.preventDefault(); loadEkgFile(f); }
+});
 
 function updateCalc(){
   const el=document.getElementById("calc_react");
