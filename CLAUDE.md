@@ -34,7 +34,8 @@ QR이 박힌 번호표를 뽑고, 본인 결과를 조회하게 한다.
 
 ### 탭 구성
 - **문진** — 6단계 설문 → 접수번호 발급 + QR + 판정 + 라벨 인쇄
-- **측정 입력** — 번호 조회 또는 QR 스캔 → 항목별 입력
+- **측정 입력** — 번호 조회 또는 QR 스캔 → 항목별 입력.
+  담당 스테이션(전체 / 혈압·심박 / 악력·EKG / 순발력·감각)을 고르면 그 항목만 뜬다
 - **기록** — 목록, 카운터, CSV 내려받기
 - **설정** — 기기 코드, 일차, 라벨 인쇄 옵션, 백업
 - **결과** — `?r=A001` 로 접근. 판정 + 참여자 중 내 위치
@@ -49,8 +50,15 @@ QR이 박힌 번호표를 뽑고, 본인 결과를 조회하게 한다.
 - **localStorage** — 항상 먼저 쓴다. 서버가 죽어도 데이터가 남는다
 - **Firestore** (`ynhs-exco` 프로젝트, `records` 컬렉션) — 문서 ID = 접수번호
 - 병합은 `upd`(epoch ms)가 최신인 쪽이 이긴다
+- **`stats/live` 문서** — 이름·나이·번호 없이 값만 모은 분포(악력·반응·심박·생활습관나이).
+  부스 기기가 저장할 때마다 3초 묶어서 갱신한다
 - 오프라인 캐시(`persistentLocalCache`) 켜져 있음
 - 헤더 오른쪽에 상태 표시: `동기화됨` / `오프라인` / `로컬 전용`
+
+**`?r=`로 들어온 기기는 컬렉션 전체를 구독하지 않는다.** 자기 문서 하나(`FB.one`)와
+`stats/live`만 읽고, 받은 것을 localStorage에 남기지 않는다. 방문객 휴대폰에
+참여자 300명의 이름·나이·혈액형이 영구 저장되는 것을 막기 위한 것이다.
+이 구조를 `onSnapshot(col)` 하나로 되돌리지 말 것.
 
 ### 핵심 함수
 | 함수 | 역할 |
@@ -65,6 +73,11 @@ QR이 박힌 번호표를 뽑고, 본인 결과를 조회하게 한다.
 | `qrFor(id)` | QR SVG. 내용은 `location.origin+pathname+"?r="+id` |
 | `printLabel(r)` | 새 창 띄워 인쇄 |
 | `findRec(raw)` | 번호 또는 QR URL 문자열로 조회 |
+| `stationGroups()` | 담당 스테이션의 측정 항목만 반환 |
+| `harvestFields()` | 입력칸 값을 기록으로 거둠. **화면을 다시 그리기 전에 반드시 호출** |
+| `buildStats()` | 이름 없는 분포 집계 생성 |
+| `publishStats()` | 3초 묶어 `stats/live`에 올림 |
+| `rankIn(arr,v,dir)` | 분포 안 백분위. 표본 3 미만이면 `null` |
 
 ---
 
@@ -194,6 +207,7 @@ QR 스캔은 secure context가 필요하다. GitHub Pages(https)는 되고,
 ```
 // 테스트
 match /records/{id} { allow read, write: if true; }
+match /stats/{id}   { allow read, write: if true; }
 
 // 실전
 match /records/{id} {
@@ -201,10 +215,19 @@ match /records/{id} {
   allow create, update: if true;
   allow delete: if false;
 }
+match /stats/{id} {
+  allow read: if true;
+  allow create, update: if true;
+  allow delete: if false;
+}
 
 // 종료 후
 match /records/{id} { allow read, write: if false; }
+match /stats/{id}   { allow read, write: if false; }
 ```
+
+**`stats` 규칙을 빠뜨리면 결과 조회의 순위가 전부 "자료를 더 모으는 중"으로 나온다.**
+집계 쓰기는 실패해도 조용히 넘어가므로 부스에서 알아채기 어렵다.
 
 `apiKey`가 public 저장소에 올라가는 것은 정상이다. 보안은 규칙이 담당한다.
 
@@ -234,6 +257,12 @@ match /records/{id} { allow read, write: if false; }
 3. **결과지 출력** — A4. 본인 데이터 + 전체 분포 위치 + 처방 문구.
    뒷면에 패널 4장 내용(채혈을 안 하는 이유 / 혈액형 성격론 / 측정값과 진단 /
    정상 범위 / 생체 데이터 보호)
+
+### 기획서에 있으나 아직 안 넣은 것
+- 문진 마무리 확인란 — "위 내용은 사실과 다름없음을 확인합니다 /
+  본 문진은 교육 체험용이며 의학적 진단에 사용되지 않습니다"
+- 발목 잡은 항목에 연수 표시 — "화면 시간이 **+2년을** 끌어올렸습니다"
+  (지금은 연수 없이 "가장 많이 끌어올렸어요")
 
 ### 우선순위 낮음
 4. 관리 화면 — 전체 데이터 확인, 일괄 CSV

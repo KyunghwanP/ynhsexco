@@ -170,7 +170,14 @@ input:focus,.opt:focus-visible,button:focus-visible{outline:2.5px solid var(--tr
 .agebox .big{font-size:38px;font-weight:700;color:var(--trace);line-height:1.2}
 .agebox .sub{font-size:14px;color:var(--ink2);margin-top:4px}
 .agebox .cause{font-size:14.5px;margin-top:10px;color:var(--ink2)}
-.disclaim{font-size:13px;color:var(--ink3);text-align:center;margin-top:10px}
+.disclaim{
+  font-size:15px;line-height:1.55;color:var(--ink2);text-align:center;margin-top:18px;
+  background:var(--card);border:1.5px solid var(--line2);border-radius:12px;padding:15px 16px;
+}
+.disclaim b{color:var(--ink);font-weight:700}
+/* 스테이션 선택 칩 */
+.station{margin-bottom:18px}
+.station .qt{display:block;font-size:14px;font-weight:500;color:var(--ink2);margin-bottom:8px}
 
 /* ── 조회 ── */
 .lookup{display:flex;gap:9px;margin-bottom:18px}
@@ -261,7 +268,7 @@ td.n{font-family:"IBM Plex Mono",monospace}
 <!-- ══ 측정 입력 ══ -->
 <section id="measure" hidden>
   <div class="lookup">
-    <input type="number" inputmode="numeric" id="lookNum" placeholder="접수번호" autocomplete="off">
+    <input type="text" id="lookNum" placeholder="접수번호" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8">
     <button class="btn sm" id="btnScan" style="flex:0 0 auto">QR 스캔</button>
     <button class="btn sm go" id="btnLook" style="flex:0 0 auto">조회</button>
   </div>
@@ -340,7 +347,7 @@ td.n{font-family:"IBM Plex Mono",monospace}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         collection, doc, setDoc, onSnapshot }
+         collection, doc, getDoc, setDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -359,9 +366,15 @@ try{
   });
   const col = collection(db, "records");
 
+  const statsRef = doc(db, "stats", "live");
+
   window.FB = {
     on: true,
     save(rec){ return setDoc(doc(col, rec.id), rec, { merge:true }); },
+    // 결과 조회용. 방문객 기기는 컬렉션 전체가 아니라 이 둘만 읽는다.
+    one(id){ return getDoc(doc(col, id)).then(s=>s.exists()?s.data():null); },
+    stats(){ return getDoc(statsRef).then(s=>s.exists()?s.data():null); },
+    putStats(o){ return setDoc(statsRef, o); },
     watch(cb, status){
       onSnapshot(col,
         snap=>{
@@ -388,7 +401,7 @@ const KEY="biodata.records.v1", CFG="biodata.config.v1";
    순위 계산에 남의 기록이 필요하지만 그 기기에 남겨두지는 않는다. */
 const RESULT_ONLY = new URLSearchParams(location.search).has("r");
 const remoteUpd = new Map();   // 서버가 가진 id별 upd. 중복 업로드를 막는다
-let cfg={dev:"A",day:1,autoPrint:true};
+let cfg={dev:"A",day:1,autoPrint:true,station:"all"};
 let recs=[];
 
 function loadAll(){
@@ -409,6 +422,7 @@ function saveAll(one){
   list.forEach(r=>{
     window.FB.save(stripUndef(r)).catch(err=>console.warn("save fail",r.id,err.code||err));
   });
+  publishStats();
 }
 function saveCfg(){ try{localStorage.setItem(CFG,JSON.stringify(cfg));}catch(e){} }
 function stripUndef(o){
@@ -764,7 +778,7 @@ function showTicket(r){
         <div class="vc"><div class="t">${t}</div><div class="d" style="background:${GCOLOR[g]}"></div><div class="v">${GRADE[g]}</div></div>
       `).join("")}
     </div>
-    <p class="disclaim">재미로 계산한 지수입니다. 의학적 진단이 아닙니다.<br>검사실에서 번호로 불러 드립니다.</p>
+    <p class="disclaim"><b>재미로 계산한 지수입니다. 의학적 진단이 아닙니다.</b><br>검사실에서 번호로 불러 드립니다.</p>
     <div class="nav-btns">
       <button class="btn" id="btnReprint">라벨 인쇄</button>
       <button class="btn" id="btnDlLabel">라벨 저장</button>
@@ -793,6 +807,27 @@ const MEAS=[
   {k:"bp",    n:"혈압",      opt:true, fields:[{k:"s",lab:"수축기",unit:"mmHg"},{k:"d",lab:"이완기",unit:"mmHg"}]}
 ];
 
+/* 기획서 07-1 — 스테이션 입력 태블릿 3대.
+   담당 항목만 띄워야 오입력이 줄고 입력이 빨라진다. */
+const STATIONS=[
+  {k:"all",  n:"전체",        g:null},
+  {k:"vital",n:"혈압·심박",   g:["bp","hr"]},
+  {k:"grip", n:"악력·EKG",    g:["grip","ekg"]},
+  {k:"react",n:"순발력·감각", g:["react","eye"]}
+];
+function stationGroups(){
+  const st=STATIONS.find(x=>x.k===(cfg.station||"all"))||STATIONS[0];
+  return st.g ? MEAS.filter(m=>st.g.includes(m.k)) : MEAS;
+}
+function stationChips(){
+  const cur=cfg.station||"all";
+  return `<div class="q station">
+    <span class="qt">담당 스테이션 — 고른 항목만 입력칸에 뜹니다</span>
+    <div class="opts c4">${STATIONS.map(x=>
+      `<label class="opt ${cur===x.k?"sel":""}" data-station="${x.k}">${x.n}</label>`).join("")}</div>
+  </div>`;
+}
+
 let target=null;
 
 function findRec(raw){
@@ -814,6 +849,9 @@ function doLookup(raw){
 }
 document.getElementById("btnLook").onclick=()=>doLookup();
 document.getElementById("lookNum").addEventListener("keydown",e=>{ if(e.key==="Enter") doLookup(); });
+document.getElementById("lookNum").addEventListener("input",e=>{
+  e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"");
+});
 
 /* ═══════ QR 스캐너 ═══════ */
 let camStream=null, rafId=null;
@@ -856,13 +894,13 @@ document.getElementById("btnScanClose").onclick=closeScan;
 function renderMeasure(){
   const box=document.getElementById("measureBody");
   if(!target){
-    box.innerHTML=`<div class="empty"><p>QR을 스캔하거나 접수번호를 조회하면 입력칸이 열립니다.</p><p>문진을 마친 사람만 조회됩니다.</p></div>`;
+    box.innerHTML=stationChips()+`<div class="empty"><p>QR을 스캔하거나 접수번호를 조회하면 입력칸이 열립니다.</p><p>문진을 마친 사람만 조회됩니다.</p></div>`;
     return;
   }
   const r=target, m=r.m||{};
-  let h=`<div class="found"><div><b>${escapeHtml(r.name)}</b> <span class="meta">${r.age}세 · ${r.sex} · ${r.id}</span></div></div>`;
+  let h=stationChips()+`<div class="found"><div><b>${escapeHtml(r.name)}</b> <span class="meta">${r.age}세 · ${escapeHtml(r.sex)} · ${r.id}</span></div></div>`;
 
-  MEAS.forEach(g=>{
+  stationGroups().forEach(g=>{
     const val=m[g.k], skipped=val==="skip";
     h+=`<div class="mgroup" data-g="${g.k}">
       <h3><span>${g.n}${g.opt?' <span class="meta" style="font-size:13px;color:var(--ink3)">선택</span>':""}${val&&!skipped?'<span class="done">입력됨</span>':""}</span>
@@ -891,6 +929,12 @@ function renderMeasure(){
 }
 
 document.getElementById("measureBody").addEventListener("click",e=>{
+  const stn=e.target.closest("[data-station]");
+  if(stn){
+    harvestFields();                       // 화면을 바꾸기 전에 입력값을 거둔다
+    cfg.station=stn.dataset.station; saveCfg();
+    renderMeasure(); return;
+  }
   const sk=e.target.closest("[data-skip]");
   if(sk && target){
     harvestFields();                       // 입력하던 값을 잃지 않게 먼저 거둔다
@@ -1044,7 +1088,43 @@ document.getElementById("btnRefresh").onclick=()=>{ loadAll(); renderRecords(); 
 
 /* ═══════ 결과 조회 ═══════ */
 const pendingR=new URLSearchParams(location.search).get("r");
-function pctBelow(arr,v){ return arr.length ? Math.round(arr.filter(x=>x<v).length/arr.length*100) : null; }
+
+function gripOf(x){
+  const g=x.m&&x.m.grip;
+  return (g&&g!=="skip") ? (Math.max(g.l||0,g.r||0)||null) : null;
+}
+
+/* 이름·나이·번호 없이 값만 모은 분포.
+   방문객 기기가 순위를 그리려고 남의 기록을 통째로 받지 않아도 되게 한다. */
+function buildStats(){
+  const grip=[],react=[],hr=[],life=[];
+  recs.forEach(x=>{
+    const m=x.m||{};
+    const g=gripOf(x); if(g) grip.push(g);
+    if(m.reactMs) react.push(m.reactMs);
+    const b=(m.hr&&m.hr!=="skip")?m.hr.bpm:null; if(b) hr.push(b);
+    if(x.age!=null) life.push(lifeAge(x).diff);
+  });
+  const asc=a=>a.sort((p,q)=>p-q);
+  return {n:recs.length, upd:Date.now(), grip:asc(grip), react:asc(react), hr:asc(hr), life:asc(life)};
+}
+
+let stats=null, statsTimer=null;
+function publishStats(){
+  if(RESULT_ONLY || !window.FB || !window.FB.on || !window.FB.putStats) return;
+  clearTimeout(statsTimer);
+  statsTimer=setTimeout(()=>{
+    window.FB.putStats(buildStats()).catch(err=>console.warn("stats",err.code||err));
+  },3000);
+}
+
+/* 표본이 적으면 순위를 말하지 않는다. 3명 중 1등은 의미가 없다. */
+const MIN_POOL=3;
+function rankIn(arr,v,dir){
+  if(!arr || arr.length<MIN_POOL) return null;
+  const p=Math.round(arr.filter(x=>x<v).length/arr.length*100);
+  return dir==="high" ? p : 100-p;
+}
 
 let fbSettled=false;
 function showResult(id){
@@ -1062,22 +1142,14 @@ function showResult(id){
     window.scrollTo({top:0,behavior:"instant"}); return;
   }
   const m=r.m||{}, j=judge(r), la=lifeAge(r);
-  const peers=recs.filter(x=>x.id!==r.id);
-  const gripOf=x=>(x.m&&x.m.grip&&x.m.grip!=="skip")?Math.max(x.m.grip.l||0,x.m.grip.r||0):null;
+  const pool = stats || buildStats();
   const rows=[];
   const gv=gripOf(r);
-  if(gv) rows.push(["악력 (최고)",gv+" kg",pctBelow(peers.map(gripOf).filter(v=>v),gv),"셀수록 위쪽"]);
-  if(m.reactMs){
-    const p=pctBelow(peers.map(x=>x.m&&x.m.reactMs).filter(v=>v),m.reactMs);
-    rows.push(["반응속도",m.reactMs+" ms",p==null?null:100-p,"빠를수록 위쪽"]);
-  }
+  if(gv) rows.push(["악력 (최고)",gv+" kg",rankIn(pool.grip,gv,"high"),"셀수록 위쪽"]);
+  if(m.reactMs) rows.push(["반응속도",m.reactMs+" ms",rankIn(pool.react,m.reactMs,"low"),"빠를수록 위쪽"]);
   const bpm=(m.hr&&m.hr!=="skip")?m.hr.bpm:null;
-  if(bpm){
-    const p=pctBelow(peers.map(x=>(x.m&&x.m.hr&&x.m.hr!=="skip")?x.m.hr.bpm:null).filter(v=>v),bpm);
-    rows.push(["안정 시 심박",bpm+" BPM",p==null?null:100-p,"낮을수록 위쪽"]);
-  }
-  const lap=pctBelow(peers.map(x=>-lifeAge(x).diff),-la.diff);
-  rows.push(["생활습관 나이",signedYears(la.diff),lap,"낮을수록 위쪽"]);
+  if(bpm) rows.push(["안정 시 심박",bpm+" BPM",rankIn(pool.hr,bpm,"low"),"낮을수록 위쪽"]);
+  rows.push(["생활습관 나이",signedYears(la.diff),rankIn(pool.life,la.diff,"low"),"낮을수록 위쪽"]);
 
   let h=`<div class="ticket">
       <div class="left"><div class="lbl">접수번호</div><div class="num mono">${escapeHtml(r.id)}</div>
@@ -1089,13 +1161,13 @@ function showResult(id){
       <div class="cause">${la.cause?escapeHtml(la.cause)+"이(가) 가장 많이 끌어올렸어요":"모든 항목이 좋아요"}</div></div>
     <div class="verdict">${[["수면",j.sleep],["활동",j.act],["스트레스",j.stress]].map(([t,g])=>
       `<div class="vc"><div class="t">${t}</div><div class="d" style="background:${GCOLOR[g]}"></div><div class="v">${GRADE[g]}</div></div>`).join("")}</div>
-    <h2 style="font-size:19px;margin:28px 0 12px;font-weight:700">참여자 ${recs.length}명 중 내 위치</h2>`;
+    <h2 style="font-size:19px;margin:28px 0 12px;font-weight:700">참여자 ${pool.n||recs.length}명 중 내 위치</h2>`;
   rows.forEach(([t,val,p,cap])=>{
     h+=`<div class="rank"><div class="h"><b>${t}</b><em>${val}</em></div>
       <div class="bar-wrap">${p!=null?`<div class="bar-me" style="left:calc(${Math.max(1,Math.min(99,p))}% - 2px)"></div>`:""}</div>
       <div class="cap"><span>${cap}</span><span>${p!=null?"상위 "+Math.max(1,100-p)+"%":"자료를 더 모으는 중"}</span></div></div>`;
   });
-  h+=`<p class="disclaim" style="margin-top:22px">교육용 체험이며 의학적 진단이 아닙니다.<br>생활습관 나이는 재미로 계산한 지수입니다.</p>${home}`;
+  h+=`<p class="disclaim" style="margin-top:22px"><b>교육용 체험이며 의학적 진단이 아닙니다.</b><br><b>생활습관 나이는 재미로 계산한 지수입니다.</b><br>우리가 임의로 정한 가중치로 계산했습니다.</p>${home}`;
   box.innerHTML=h;
   window.scrollTo({top:0,behavior:"instant"});
 }
@@ -1172,8 +1244,25 @@ renderMeasure();
 if(pendingR) showResult(pendingR);
 
 /* ═══════ 서버 연결 ═══════ */
+/* 방문객 기기는 컬렉션 전체를 구독하지 않는다.
+   자기 문서 하나와 이름 없는 분포 집계만 받는다. */
+async function loadResultOnly(id){
+  try{
+    const [rec, st] = await Promise.all([window.FB.one(id), window.FB.stats()]);
+    if(rec) mergeRemote([rec]);
+    if(st) stats=st;
+    setNet(rec?"live":"cache");
+  }catch(err){
+    console.warn("result load", err.code||err);
+    setNet("error");
+  }
+  fbSettled=true;
+  showResult(id);
+}
+
 function connectFB(){
   if(!window.FB || !window.FB.on){ fbSettled=true; setNet("none"); if(pendingR) showResult(pendingR); return; }
+  if(RESULT_ONLY){ loadResultOnly(pendingR); return; }
   window.FB.watch(list=>{
     const changed=mergeRemote(list);
     fbSettled=true;
@@ -1186,6 +1275,7 @@ function connectFB(){
   setTimeout(()=>{
     recs.filter(r=>!remoteUpd.has(r.id) || (r.upd||0) > remoteUpd.get(r.id))
         .forEach(r=>saveAll(r));
+    publishStats();
   }, 1500);
 }
 if(window.FB!==undefined) connectFB();
