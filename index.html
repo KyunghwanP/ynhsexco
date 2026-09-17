@@ -217,6 +217,38 @@ td.n{font-family:"IBM Plex Mono",monospace}
 .note{background:var(--amber-bg);border-left:3px solid var(--amber);padding:13px 16px;border-radius:0 8px 8px 0;font-size:14.5px;color:var(--ink2);margin-bottom:16px}
 .note b{color:var(--ink)}
 
+/* ── 실시간 보드 ── */
+body.board{overflow:hidden;padding:0}
+body.board header,body.board main{display:none}
+#board{display:none;position:fixed;inset:0;background:var(--paper);
+  flex-direction:column;padding:2.4vh 2.6vw;gap:1.6vh}
+body.board #board{display:flex}
+#board .qline{font-size:clamp(20px,3.2vw,44px);font-weight:700;letter-spacing:-.02em;
+  line-height:1.25;text-align:center;flex:0 0 auto}
+#board .qline em{font-style:normal;color:var(--trace)}
+#board .plot{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center}
+#board .plot svg{width:100%;height:100%}
+#board .foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  gap:2vw;font-size:clamp(13px,1.5vw,20px);color:var(--ink3)}
+#board .dots{display:flex;gap:7px}
+#board .dots i{width:10px;height:10px;border-radius:50%;background:var(--line2);display:block}
+#board .dots i.on{background:var(--trace)}
+#board .cnt b{font-size:clamp(20px,2.6vw,36px);color:var(--ink);font-weight:700;
+  font-family:"IBM Plex Mono",monospace}
+#board .none{font-size:clamp(16px,2vw,26px);color:var(--ink3);text-align:center}
+#board table{font-size:clamp(12px,1.3vw,17px);min-width:0}
+#board .tbl{overflow:auto;max-height:100%;width:100%}
+.bchart .grid{stroke:var(--line);stroke-width:1;fill:none}
+.bchart .axis{stroke:var(--line2);stroke-width:1.5;fill:none}
+.bchart .tick{fill:var(--ink3);font-size:19px;font-family:inherit}
+.bchart .alab{fill:var(--ink2);font-size:21px;font-weight:500;font-family:inherit}
+.bchart .dot{fill:var(--trace);opacity:.40}
+.bchart .me{fill:var(--trace);stroke:var(--card);stroke-width:3}
+.bchart .melab{fill:var(--trace);font-size:26px;font-weight:700;font-family:inherit}
+.bchart .mean{stroke:var(--trace);stroke-width:3;fill:none}
+.bchart .meanpt{fill:var(--card);stroke:var(--trace);stroke-width:3}
+.bchart .lg{fill:var(--ink2);font-size:20px;font-family:inherit}
+
 /* ── 토스트 ── */
 #toast{
   position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);
@@ -344,6 +376,15 @@ td.n{font-family:"IBM Plex Mono",monospace}
 <section id="result" hidden></section>
 </main>
 
+<div id="board">
+  <div class="qline" id="bQ"></div>
+  <div class="plot" id="bPlot"></div>
+  <div class="foot">
+    <div class="dots" id="bDots"></div>
+    <div class="cnt">참여 <b id="bN">0</b>명</div>
+  </div>
+</div>
+
 <div id="scan">
   <video id="scanVid" playsinline muted></video>
   <div class="scan-ui"><div class="scan-box"></div><div class="scan-msg" id="scanMsg">번호표의 QR을 네모 안에 맞춰 주세요</div></div>
@@ -451,13 +492,16 @@ function nextNo(){
 function mergeRemote(list){
   const byId=new Map(recs.map(r=>[r.id,r]));
   let changed=false;
+  let newest=null, newestUpd=0;
   list.forEach(rm=>{
     if(!rm||!rm.id) return;
     remoteUpd.set(rm.id, rm.upd||0);
     const lo=byId.get(rm.id);
-    if(!lo){ recs.push(rm); byId.set(rm.id,rm); changed=true; return; }
-    if((rm.upd||0) > (lo.upd||0)){ Object.assign(lo,rm); changed=true; }
+    const mark=()=>{ if((rm.upd||0)>=newestUpd){ newestUpd=rm.upd||0; newest=rm.id; } };
+    if(!lo){ recs.push(rm); byId.set(rm.id,rm); changed=true; mark(); return; }
+    if((rm.upd||0) > (lo.upd||0)){ Object.assign(lo,rm); changed=true; mark(); }
   });
+  if(changed && newest && BOARD) flashPoint(newest);
   if(changed){
     recs.sort((a,b)=>String(a.at).localeCompare(String(b.at)));
     if(!RESULT_ONLY) saveLocal();
@@ -1810,6 +1854,280 @@ function showResult(id){
   window.scrollTo({top:0,behavior:"instant"});
 }
 
+
+/* ═══════ 실시간 보드 ═══════ */
+/* 부스에서 1~2m 떨어져 보는 화면이다. 마우스가 없으므로 hover 대신
+   직접 라벨로 읽게 하고, 한 화면에 그래프 하나만 둔다. */
+const BOARD = new URLSearchParams(location.search).get("board");
+const BW=1000, BH=560, BM={l:132,r:46,t:26,b:90};
+
+/* 순서가 있는 3단계(운동량·스트레스)는 한 색조의 명도 단계로 칠한다.
+   검증: node validate_palette.js --ordinal → 밝은/어두운 배경 모두 통과 */
+const ORD_LIGHT=["#6dc2a0","#2f9e78","#0a5f45"];
+const ORD_DARK =["#0f5f46","#2fa87e","#7fe3bb"];
+function ordColors(){
+  const forced=document.documentElement.getAttribute("data-theme");
+  if(forced==="dark") return ORD_DARK;
+  if(forced==="light") return ORD_LIGHT;
+  return matchMedia("(prefers-color-scheme: dark)").matches ? ORD_DARK : ORD_LIGHT;
+}
+
+function niceTicks(lo,hi,want){
+  if(!(hi>lo)){ hi=lo+1; }
+  const raw=(hi-lo)/Math.max(1,want);
+  const mag=Math.pow(10,Math.floor(Math.log10(raw))), nz=raw/mag;
+  const step=(nz<=1?1:nz<=2?2:nz<=5?5:10)*mag;
+  const out=[];
+  for(let v=Math.floor(lo/step)*step; v<=Math.ceil(hi/step)*step+step*1e-9; v+=step)
+    out.push(Math.round(v*1e6)/1e6);
+  return out;
+}
+function bSvg(inner){
+  return `<svg class="bchart" viewBox="0 0 ${BW} ${BH}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+}
+/* 데이터 끝만 둥근 막대. 바닥선에 붙인다. */
+function barPath(x,y,w,h,r){
+  r=Math.max(0,Math.min(r,w/2,h));
+  return `M${x},${y+h}L${x},${y+r}Q${x},${y} ${x+r},${y}L${x+w-r},${y}Q${x+w},${y} ${x+w},${y+r}L${x+w},${y+h}Z`;
+}
+function bFrame(xs, ys, xLab, yLab, xFmt){
+  const xt=niceTicks(Math.min(...xs),Math.max(...xs),6);
+  const yt=niceTicks(Math.min(...ys),Math.max(...ys),5);
+  const x0=xt[0], x1=xt[xt.length-1], y0=yt[0], y1=yt[yt.length-1];
+  const px=v=>BM.l+(v-x0)/((x1-x0)||1)*(BW-BM.l-BM.r);
+  const py=v=>BH-BM.b-(v-y0)/((y1-y0)||1)*(BH-BM.t-BM.b);
+  let g="";
+  yt.forEach(v=>{
+    const y=py(v).toFixed(1);
+    g+=`<line class="grid" x1="${BM.l}" y1="${y}" x2="${BW-BM.r}" y2="${y}"/>`
+     + `<text class="tick" x="${BM.l-16}" y="${(py(v)+7).toFixed(1)}" text-anchor="end">${v}</text>`;
+  });
+  xt.forEach(v=>{
+    g+=`<text class="tick" x="${px(v).toFixed(1)}" y="${BH-BM.b+32}" text-anchor="middle">${xFmt?xFmt(v):v}</text>`;
+  });
+  g+=`<line class="axis" x1="${BM.l}" y1="${BH-BM.b}" x2="${BW-BM.r}" y2="${BH-BM.b}"/>`
+   + `<text class="alab" x="${(BM.l+BW-BM.r)/2}" y="${BH-20}" text-anchor="middle">${xLab}</text>`
+   + `<text class="alab" x="${-((BM.t+BH-BM.b)/2)}" y="34" transform="rotate(-90)" text-anchor="middle">${yLab}</text>`;
+  return {px,py,g};
+}
+
+/* 점 하나는 사람 하나. 구간 평균을 겹쳐 흐름을 읽게 한다. */
+function bScatter(pts, xLab, yLab, binOf){
+  const f=bFrame(pts.map(p=>p.x), pts.map(p=>p.y), xLab, yLab);
+  let m="", legend="";
+  pts.forEach(p=>{
+    if(flashId && p.id===flashId) return;         // 강조 점은 맨 위에 다시 그린다
+    m+=`<circle class="dot" cx="${f.px(p.x).toFixed(1)}" cy="${f.py(p.y).toFixed(1)}" r="9"/>`;
+  });
+  if(binOf){
+    const bins=new Map();
+    pts.forEach(p=>{ const k=binOf(p.x); if(!bins.has(k)) bins.set(k,[]); bins.get(k).push(p.y); });
+    const keys=[...bins.keys()].filter(k=>bins.get(k).length>=3).sort((a,b)=>a-b);
+    if(keys.length>=2){
+      const avg=k=>{ const a=bins.get(k); return a.reduce((x,y)=>x+y,0)/a.length; };
+      m+=`<polyline class="mean" points="${keys.map(k=>`${f.px(k).toFixed(1)},${f.py(avg(k)).toFixed(1)}`).join(" ")}"/>`;
+      keys.forEach(k=>{ m+=`<circle class="meanpt" cx="${f.px(k).toFixed(1)}" cy="${f.py(avg(k)).toFixed(1)}" r="10"/>`; });
+      legend=`<g transform="translate(${BM.l+10},${BM.t+18})">`
+        +`<circle class="dot" cx="9" cy="0" r="9"/><text class="lg" x="28" y="7">한 사람</text>`
+        +`<circle class="meanpt" cx="139" cy="0" r="10"/><text class="lg" x="158" y="7">구간 평균</text></g>`;
+    }
+  }
+  const me=pts.find(p=>flashId && p.id===flashId);
+  if(me){
+    m+=`<circle class="me" cx="${f.px(me.x).toFixed(1)}" cy="${f.py(me.y).toFixed(1)}" r="17"/>`
+     + `<text class="melab" x="${f.px(me.x).toFixed(1)}" y="${(f.py(me.y)-30).toFixed(1)}" text-anchor="middle">방금 측정</text>`;
+  }
+  return bSvg(f.g+m+legend);
+}
+
+/* 순서 있는 몇 그룹. 사람마다 점을 찍고 평균만 굵은 선으로 얹는다.
+   평균을 큰 막대로 칠하면 블록이 점을 덮고 분포가 안 보인다. */
+function bGroups(groups, xLab, yLab){
+  const all=groups.reduce((a,g)=>a.concat(g.v),[]);
+  const yt=niceTicks(Math.min(...all), Math.max(...all), 5);
+  const y0=yt[0], y1=yt[yt.length-1];
+  const py=v=>BH-BM.b-(v-y0)/((y1-y0)||1)*(BH-BM.t-BM.b);
+  const cols=ordColors();
+  let g="";
+  yt.forEach(v=>{
+    g+=`<line class="grid" x1="${BM.l}" y1="${py(v).toFixed(1)}" x2="${BW-BM.r}" y2="${py(v).toFixed(1)}"/>`
+     + `<text class="tick" x="${BM.l-16}" y="${(py(v)+7).toFixed(1)}" text-anchor="end">${v}</text>`;
+  });
+  const slot=(BW-BM.l-BM.r)/groups.length, rw=Math.min(190, slot*0.62);
+  groups.forEach((gr,i)=>{
+    const cx=BM.l+slot*(i+0.5);
+    const avg=gr.v.length? gr.v.reduce((a,b)=>a+b,0)/gr.v.length : 0;
+    gr.v.forEach((v,j)=>{
+      const jit=((j*37)%23-11)/11*(rw*0.42);
+      g+=`<circle class="dot" cx="${(cx+jit).toFixed(1)}" cy="${py(v).toFixed(1)}" r="8"/>`;
+    });
+    g+=`<line x1="${(cx-rw/2).toFixed(1)}" y1="${py(avg).toFixed(1)}" x2="${(cx+rw/2).toFixed(1)}" y2="${py(avg).toFixed(1)}"
+          stroke="${cols[i%cols.length]}" stroke-width="7" stroke-linecap="round"/>`
+     + `<text class="tick" x="${cx.toFixed(1)}" y="${BH-BM.b+32}" text-anchor="middle">${gr.n} · ${gr.v.length}명</text>`
+     + `<text class="melab" x="${cx.toFixed(1)}" y="${(py(avg)-20).toFixed(1)}" text-anchor="middle">${avg.toFixed(1)}</text>`;
+  });
+  g+=`<g transform="translate(${BM.l+10},${BM.t+18})"><circle class="dot" cx="9" cy="0" r="9"/>
+      <text class="lg" x="28" y="7">한 사람</text>
+      <line x1="126" y1="0" x2="160" y2="0" stroke="${cols[1]}" stroke-width="7" stroke-linecap="round"/>
+      <text class="lg" x="170" y="7">평균</text></g>`;
+  g+=`<line class="axis" x1="${BM.l}" y1="${BH-BM.b}" x2="${BW-BM.r}" y2="${BH-BM.b}"/>`
+   + `<text class="alab" x="${(BM.l+BW-BM.r)/2}" y="${BH-20}" text-anchor="middle">${xLab}</text>`
+   + `<text class="alab" x="${-((BM.t+BH-BM.b)/2)}" y="34" transform="rotate(-90)" text-anchor="middle">${yLab}</text>`;
+  return bSvg(g);
+}
+
+function bHist(vals, step, xLab, yLab, fmt){
+  const lo=Math.floor(Math.min(...vals)/step)*step, hi=Math.ceil(Math.max(...vals)/step)*step;
+  const nb=Math.max(1,Math.round((hi-lo)/step)), cnt=new Array(nb).fill(0);
+  vals.forEach(v=>{ cnt[Math.min(nb-1,Math.floor((v-lo)/step))]++; });
+  const yt=niceTicks(0,Math.max(...cnt),4), y1=yt[yt.length-1];
+  const py=v=>BH-BM.b-(v/(y1||1))*(BH-BM.t-BM.b);
+  let g="";
+  yt.forEach(v=>{
+    g+=`<line class="grid" x1="${BM.l}" y1="${py(v).toFixed(1)}" x2="${BW-BM.r}" y2="${py(v).toFixed(1)}"/>`
+     + `<text class="tick" x="${BM.l-16}" y="${(py(v)+7).toFixed(1)}" text-anchor="end">${v}</text>`;
+  });
+  const slot=(BW-BM.l-BM.r)/nb;
+  cnt.forEach((c,i)=>{
+    const x=BM.l+slot*i+1;                        // 2px 틈으로 막대를 나눈다
+    if(c>0) g+=`<path d="${barPath(x, py(c), slot-2, BH-BM.b-py(c), 4)}" fill="var(--trace)"/>`;
+  });
+  // 눈금은 막대 가운데가 아니라 구간 경계에 찍는다. 가운데에 두면
+  // 그 값이 구간의 시작인지 중앙인지 읽는 사람이 알 수 없다.
+  const every=nb<=10?1:2;
+  for(let i=0;i<=nb;i+=every){
+    const v=lo+step*i;
+    g+=`<text class="tick" x="${(BM.l+slot*i).toFixed(1)}" y="${BH-BM.b+32}" text-anchor="middle">${fmt?fmt(v):v}</text>`;
+  }
+  g+=`<line class="axis" x1="${BM.l}" y1="${BH-BM.b}" x2="${BW-BM.r}" y2="${BH-BM.b}"/>`
+   + `<text class="alab" x="${(BM.l+BW-BM.r)/2}" y="${BH-20}" text-anchor="middle">${xLab}</text>`
+   + `<text class="alab" x="${-((BM.t+BH-BM.b)/2)}" y="34" transform="rotate(-90)" text-anchor="middle">${yLab}</text>`;
+  return bSvg(g);
+}
+
+/* ── 화면 정의 ── */
+const gripBest=r=>gripOf(r);
+const reactOf=r=>(r.m&&r.m.reactMs)||null;
+const bpmOf=r=>(r.m&&r.m.hr&&r.m.hr!=="skip")?r.m.hr.bpm:null;
+const pairs=(fx,fy)=>recs.map(r=>{
+  const x=fx(r), y=fy(r);
+  return (x!=null&&y!=null&&isFinite(x)&&isFinite(y))?{x,y,id:r.id}:null;
+}).filter(Boolean);
+
+function boardScreens(){
+  const age5=x=>Math.floor(x/5)*5+2.5;
+  const byOrd=(key,names,fy)=>names.map((nm,i)=>({
+    n:nm, v:recs.filter(r=>r[key]===i).map(fy).filter(v=>v!=null&&isFinite(v))
+  })).filter(g=>g.v.length);
+  const A=[
+    {q:`나이가 많을수록 <em>반응속도</em>가 빠를까?`,
+     cols:["접수번호","나이","반응속도(ms)"],
+     data:()=>pairs(r=>r.age, reactOf),
+     draw:d=>bScatter(d,"나이 (세)","반응속도 (ms)",age5)},
+    {q:`<em>악력</em>은 몇 살부터 급격히 늘어날까?`,
+     cols:["접수번호","나이","악력(kg)"],
+     data:()=>pairs(r=>r.age, gripBest),
+     draw:d=>bScatter(d,"나이 (세)","악력 (kg)",age5)},
+    {q:`운동량이 많으면 <em>악력</em>이 셀까?`,
+     cols:["운동","사람 수","평균 악력(kg)"],
+     data:()=>byOrd("exer",["주 3번 이상","주 1~2번","거의 안 함"],gripBest),
+     draw:d=>bGroups(d,"일주일 운동 횟수","악력 (kg)"), grouped:true},
+    {q:`주손과 비주손의 <em>악력 차이</em>는 몇 %일까?`,
+     cols:["접수번호","차이(%)"],
+     data:()=>recs.map(r=>{
+       const g=r.m&&r.m.grip;
+       if(!g||g==="skip"||g.l==null||g.r==null) return null;
+       const hi=Math.max(g.l,g.r), lo=Math.min(g.l,g.r);
+       return lo>0?{x:Math.round((hi-lo)/lo*100),y:0,id:r.id}:null;
+     }).filter(Boolean),
+     draw:d=>bHist(d.map(p=>p.x),5,"주손이 더 센 정도 (%)","사람 수")}
+  ];
+  const B=[
+    {q:`지금까지 <em>${recs.length}명</em>이 참여했어요`, tiles:true,
+     cols:["항목","값"], data:()=>[], draw:()=>""},
+    {q:`오늘의 <em>생활습관 나이</em>는 어떻게 퍼져 있을까?`,
+     cols:["접수번호","생활습관 나이 차이(년)"],
+     data:()=>recs.filter(r=>r.age!=null).map(r=>({x:lifeAge(r).diff,y:0,id:r.id})),
+     draw:d=>bHist(d.map(p=>p.x),2,"실제 나이와의 차이 (년)","사람 수",v=>v>0?"+"+v:v)},
+    {q:`잠을 적게 자면 <em>반응속도</em>가 느려질까?`,
+     cols:["접수번호","수면(시간)","반응속도(ms)"],
+     data:()=>pairs(r=>r.sleep, reactOf),
+     draw:d=>bScatter(d,"하루 수면 (시간)","반응속도 (ms)",x=>x)},
+    {q:`스트레스가 높으면 안정 시 <em>심박수</em>가 빠를까?`,
+     cols:["기분","사람 수","평균 심박(BPM)"],
+     data:()=>["양호","보통","낮음"].map((nm,i)=>({
+       n:nm, v:recs.filter(r=>judge(r).stress===i).map(bpmOf).filter(v=>v!=null)
+     })).filter(g=>g.v.length),
+     draw:d=>bGroups(d,"기분 척도","안정 시 심박 (BPM)"), grouped:true}
+  ];
+  return BOARD==="a" ? A : BOARD==="b" ? B : A.concat(B);
+}
+
+let bIdx=0, bTimer=null, bTable=false, flashId=null, flashT=null;
+function flashPoint(id){
+  flashId=id;
+  clearTimeout(flashT);
+  flashT=setTimeout(()=>{ flashId=null; if(BOARD) drawBoard(); },3000);
+  if(BOARD) drawBoard();
+}
+function statTiles(){
+  const done=recs.filter(r=>r.m&&Object.keys(r.m).some(k=>r.m[k]&&r.m[k]!=="skip"));
+  const ekg=recs.filter(r=>r.m&&r.m.ekg==="Y");
+  const ages=recs.map(r=>r.age).filter(v=>v!=null);
+  const fast=recs.map(r=>r.m&&r.m.reactMs).filter(v=>v);
+  // 참여 인원은 제목과 아래 카운터에 이미 있으므로 타일에서는 뺀다
+  const t=(v,l)=>`<div style="text-align:center"><div style="font-size:clamp(44px,8vw,110px);
+    font-weight:700;color:var(--trace);line-height:1">${v}</div>
+    <div style="font-size:clamp(14px,1.8vw,24px);color:var(--ink2);margin-top:.4em">${l}</div></div>`;
+  return `<div style="display:flex;gap:4.5vw;align-items:center;justify-content:center;width:100%;flex-wrap:wrap">
+    ${t(done.length,"측정 완료")}${t(ekg.length,"심전도 측정")}
+    ${ages.length?t(Math.min(...ages)+"~"+Math.max(...ages),"나이 범위 (세)"):""}
+    ${fast.length?t(Math.min(...fast),"오늘 가장 빠른 반응 (ms)"):""}</div>`;
+}
+function boardTable(sc,d){
+  let rows="";
+  if(sc.grouped) rows=d.map(g=>`<tr><td>${g.n}</td><td class="n">${g.v.length}</td>
+    <td class="n">${(g.v.reduce((a,b)=>a+b,0)/g.v.length).toFixed(1)}</td></tr>`).join("");
+  else if(sc.cols.length===2) rows=d.map(p=>`<tr><td class="n">${p.id}</td><td class="n">${p.x}</td></tr>`).join("");
+  else rows=d.map(p=>`<tr><td class="n">${p.id}</td><td class="n">${p.x}</td><td class="n">${p.y}</td></tr>`).join("");
+  return `<div class="tbl"><table><thead><tr>${sc.cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+function drawBoard(){
+  const sc=boardScreens();
+  if(bIdx>=sc.length) bIdx=0;
+  const cur=sc[bIdx];
+  document.getElementById("bQ").innerHTML=cur.q;
+  document.getElementById("bN").textContent=recs.length;
+  document.getElementById("bDots").innerHTML=sc.map((_,i)=>`<i class="${i===bIdx?"on":""}"></i>`).join("");
+  const plot=document.getElementById("bPlot");
+  if(cur.tiles){ plot.innerHTML=statTiles(); return; }
+  const d=cur.data();
+  const cnt=cur.grouped ? d.reduce((a,g)=>a+g.v.length,0) : d.length;
+  if(cnt<5){ plot.innerHTML=`<div class="none">아직 자료를 모으는 중입니다<br>지금까지 ${cnt}명</div>`; return; }
+  plot.innerHTML = bTable ? boardTable(cur,d) : cur.draw(d);
+}
+function boardGo(step){
+  const sc=boardScreens();
+  bIdx=(bIdx+(step||1)+sc.length)%sc.length;
+  drawBoard(); boardTimer();
+}
+function boardTimer(){
+  clearInterval(bTimer);
+  bTimer=setInterval(()=>boardGo(1), 8000);
+}
+function startBoard(){
+  document.body.classList.add("board");
+  drawBoard(); boardTimer();
+  document.getElementById("board").onclick=()=>boardGo(1);
+  addEventListener("keydown",e=>{
+    if(e.key==="ArrowRight"||e.key===" ") { e.preventDefault(); boardGo(1); }
+    else if(e.key==="ArrowLeft") boardGo(-1);
+    else if(e.key==="t"||e.key==="T"){ bTable=!bTable; drawBoard(); }   // 표로 보기
+  });
+  addEventListener("resize",drawBoard);
+}
+
 /* ═══════ 설정 ═══════ */
 function renderAdmin(){
   document.getElementById("devIn").value=cfg.dev;
@@ -1884,7 +2202,8 @@ document.getElementById("devTag").textContent=cfg.dev;
 renderStep();
 renderMeasure();
 
-if(pendingR) showResult(pendingR);
+if(BOARD) startBoard();
+else if(pendingR) showResult(pendingR);
 
 /* ═══════ 서버 연결 ═══════ */
 /* 방문객 기기는 컬렉션 전체를 구독하지 않는다.
