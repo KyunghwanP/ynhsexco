@@ -211,9 +211,10 @@ function lifeAge(r){
   const sum=pts.reduce((a,b)=>a+b,0);
   /* 고정 ±8년을 더하면 어린 학생은 실제 나이 밑으로 내려가 음수가 된다(7세−8=−1세).
      비율로 바꾸면 나이에 맞춰 늘고 줄어 7세는 5세까지만 내려간다.
-     합계 ±10 → ±22%. 18세면 ±4년이라 예전 폭과 비슷하고, 4장의 ±8년 제한은 그대로 둔다. */
+     합계 ±10 → ±22%. 따로 년수 상한을 두지 않는다 — 비율 자체가 상한이고,
+     0.78을 곱하는 것이라 어떤 나이에서도 0 밑으로 내려가지 않는다. */
   const pct=sum*0.022;
-  const diff=Math.max(-8, Math.min(8, Math.round((r.age||17)*pct)));
+  const diff=Math.round((r.age||17)*pct);
   const names=["수면량","운동량","화면 시간","아침밥","기분"];   // 전부 "이"가 붙는 말로 통일
   let worst=-1,wi=0;
   pts.forEach((p,i)=>{ if(p>worst){worst=p;wi=i;} });
