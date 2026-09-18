@@ -232,9 +232,26 @@ function rPeaks(w){
   return peaks;
 }
 
+/* 파형이 심전도처럼 생겼는지 본다.
+   전극이 덜 붙었거나 잡음만 들어온 기록을 확대해 P·QRS·T 딱지를 붙이면
+   없는 것을 만들어내는 것이다 (7장). 그럴 때는 전체 파형만 그대로 보여준다. */
+function ekgLooksReal(w){
+  if(!w || w.length<40) return false;
+  const pk=rPeaks(w);
+  if(pk.length<3) return false;
+  const rr=[]; for(let i=1;i<pk.length;i++) rr.push(pk[i]-pk[i-1]);
+  const avg=rr.reduce((a,b)=>a+b,0)/rr.length;
+  if(avg < w.length*0.03 || avg > w.length*0.5) return false;      // 박동 간격이 말이 안 된다
+  if(Math.max(...rr)-Math.min(...rr) > avg*0.6) return false;      // 간격이 들쭉날쭉하다
+  const med=[...w].sort((a,b)=>a-b)[w.length>>1];
+  return pk.every(i=>w[i]-med > 300);                              // R 이 바닥보다 확실히 솟았나
+}
+
 function ekgChart(w, opt){
   if(!w || !w.length) return "";
   const o=Object.assign({h:260, sec:null, annotate:false, zoom:false, theme:"paper"}, opt||{});
+  // 심전도처럼 안 생긴 기록은 확대도 라벨도 하지 않는다
+  if((o.zoom || o.annotate) && !ekgLooksReal(w)){ o.zoom=false; o.annotate=false; }
   const uniform=!!o.annotate;   // 라벨이 있으면 비율을 지켜야 글자가 안 찌그러진다
 
   // 박동 간격을 먼저 잡는다. 확대와 P·T 위치 계산에 함께 쓴다.
@@ -278,7 +295,7 @@ function ekgChart(w, opt){
                 text-anchor="middle" font-family="sans-serif">${t}</text>`;
     });
   }
-  return `<svg class="ekgwave${uniform?" uni":""}" viewBox="0 0 ${W} ${H}"${uniform?"":' preserveAspectRatio="none"'}
+  return `<svg class="ekgwave${uniform?" uni":""}" viewBox="0 0 ${W} ${H}"${uniform?` style="aspect-ratio:${W}/${H}"`:' preserveAspectRatio="none"'}
     xmlns="http://www.w3.org/2000/svg" role="img" aria-label="심전도 파형">
     <defs>
       <pattern id="${uid}s" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -402,7 +419,9 @@ function render(){
       <p class="note">${m.ekgSec?`${m.ekgSec.toFixed(1)}초 구간입니다. `:""}${EKG_CLEAN_NOTE}</p>
       ${(m.ekgRaw&&m.ekgRaw.length)?`<p class="note" style="margin-top:16px">다듬기 전에는 이랬습니다.</p>
         ${ekgChart(m.ekgRaw,{theme:"screen",h:200})}`:""}
-      <p class="note" style="margin-top:16px">한 박동만 크게 보면 이렇습니다.</p>
+      <p class="note" style="margin-top:16px">${ekgLooksReal(m.ekgWave)
+        ? "한 박동만 크게 보면 이렇습니다."
+        : "파형이 또렷하지 않아 한 박동만 크게 보여 드리지는 못했습니다."}</p>
       ${ekgChart(m.ekgWave,{theme:"screen",h:340,zoom:true,annotate:true})}
       <p style="font-size:14.5px;color:var(--ink2);margin:10px 0 0;line-height:1.6">${EKG_NOTE}</p>
       <p class="note">파형은 모양만 보여 드립니다. 해석하지 않습니다.${m.ekgBpm?` 파형에서 센 심박은 ${m.ekgBpm} BPM입니다.`:""}</p>`;

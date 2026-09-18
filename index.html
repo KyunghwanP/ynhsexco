@@ -809,7 +809,9 @@ function sheetHtml(r){
         <h3>${i+1}. ${t}</h3><p>${b}</p></div>`).join("")}
       ${(m.ekgWave&&m.ekgWave.length)?`<div class="panel">
         <h3>6. 내 심전도 읽는 법</h3>
-        <p>앞면의 파형에서 한 박동만 크게 본 것입니다. ${EKG_NOTE}</p>
+        <p>${ekgLooksReal(m.ekgWave)
+             ? `앞면의 파형에서 한 박동만 크게 본 것입니다. ${EKG_NOTE}`
+             : `파형이 또렷하지 않아 한 박동만 크게 보여 드리지는 못했습니다. ${EKG_NOTE}`}</p>
         ${ekgChart(m.ekgWave,{theme:"paper",h:250,zoom:true,annotate:true})}
         <p class="cap">가로는 시간, 세로는 전압입니다. 모눈 한 칸이 같은 시간·같은 전압을 나타내므로
           봉우리 사이 칸 수를 세면 심장이 몇 번 뛰는지 알 수 있습니다.
@@ -1143,6 +1145,21 @@ function rPeaks(w){
   }
   return peaks;
 }
+
+/* 파형이 심전도처럼 생겼는지 본다.
+   전극이 덜 붙었거나 잡음만 들어온 기록을 확대해 P·QRS·T 딱지를 붙이면
+   없는 것을 만들어내는 것이다 (7장). 그럴 때는 전체 파형만 그대로 보여준다. */
+function ekgLooksReal(w){
+  if(!w || w.length<40) return false;
+  const pk=rPeaks(w);
+  if(pk.length<3) return false;
+  const rr=[]; for(let i=1;i<pk.length;i++) rr.push(pk[i]-pk[i-1]);
+  const avg=rr.reduce((a,b)=>a+b,0)/rr.length;
+  if(avg < w.length*0.03 || avg > w.length*0.5) return false;      // 박동 간격이 말이 안 된다
+  if(Math.max(...rr)-Math.min(...rr) > avg*0.6) return false;      // 간격이 들쭉날쭉하다
+  const med=[...w].sort((a,b)=>a-b)[w.length>>1];
+  return pk.every(i=>w[i]-med > 300);                              // R 이 바닥보다 확실히 솟았나
+}
 function ekgBpm(w, sec){
   if(!sec || sec<=0) return null;
   const p=rPeaks(w);
@@ -1157,6 +1174,8 @@ function ekgBpm(w, sec){
 function ekgChart(w, opt){
   if(!w || !w.length) return "";
   const o=Object.assign({h:260, sec:null, annotate:false, zoom:false, theme:"paper"}, opt||{});
+  // 심전도처럼 안 생긴 기록은 확대도 라벨도 하지 않는다
+  if((o.zoom || o.annotate) && !ekgLooksReal(w)){ o.zoom=false; o.annotate=false; }
   const uniform=!!o.annotate;   // 라벨이 있으면 비율을 지켜야 글자가 안 찌그러진다
 
   // 박동 간격을 먼저 잡는다. 확대와 P·T 위치 계산에 함께 쓴다.
@@ -1200,7 +1219,7 @@ function ekgChart(w, opt){
                 text-anchor="middle" font-family="sans-serif">${t}</text>`;
     });
   }
-  return `<svg class="ekgwave${uniform?" uni":""}" viewBox="0 0 ${W} ${H}"${uniform?"":' preserveAspectRatio="none"'}
+  return `<svg class="ekgwave${uniform?" uni":""}" viewBox="0 0 ${W} ${H}"${uniform?` style="aspect-ratio:${W}/${H}"`:' preserveAspectRatio="none"'}
     xmlns="http://www.w3.org/2000/svg" role="img" aria-label="심전도 파형">
     <defs>
       <pattern id="${uid}s" width="20" height="20" patternUnits="userSpaceOnUse">
