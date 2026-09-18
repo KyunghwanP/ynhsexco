@@ -63,6 +63,22 @@ h2.sec{font-size:19px;margin:28px 0 12px;font-weight:700}
 .bar-me{position:absolute;top:-4px;width:4px;height:17px;background:var(--trace);border-radius:2px}
 .rank .cap{font-size:13.5px;color:var(--ink3);margin-top:8px;display:flex;justify-content:space-between;gap:10px}
 .ekgwave{display:block;width:100%;height:200px;border:1.5px solid var(--line);border-radius:10px}
+/* 내 심박수 속도로 뛴다. 주기는 60/BPM 초 — 인라인 스타일로 넣는다. */
+.beat{display:flex;align-items:center;gap:18px;background:var(--card);
+  border:1.5px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:18px}
+.hb{width:56px;height:56px;flex:0 0 auto;fill:var(--trace);
+  transform-origin:50% 55%;animation:hb 1s ease-in-out infinite}
+@keyframes hb{
+  0%{transform:scale(1)} 10%{transform:scale(1.22)} 22%{transform:scale(1.02)}
+  32%{transform:scale(1.12)} 45%{transform:scale(1)} 100%{transform:scale(1)}
+}
+.beat .bpm{font-size:36px;font-weight:700;color:var(--trace);line-height:1;
+  font-family:"IBM Plex Mono",monospace}
+.beat .bt{font-size:15px;color:var(--ink2);margin-top:5px}
+/* 예상과 실제 */
+.guess{background:var(--trace-bg);border-radius:12px;padding:14px 16px;margin-bottom:11px;
+  font-size:15.5px;color:var(--ink2)}
+.guess b{color:var(--ink)}
 .ekgwave.uni{height:auto}
 .disclaim{font-size:15px;line-height:1.55;color:var(--ink2);text-align:center;margin-top:18px;
   background:var(--card);border:1.5px solid var(--line2);border-radius:12px;padding:15px 16px}
@@ -284,7 +300,7 @@ function ekgChart(w, opt){
 
 function gripOf(x){
   const g=x.m&&x.m.grip;
-  return (g&&g!=="skip") ? (Math.max(g.l||0,g.r||0)||null) : null;
+  return (g&&g!=="skip") ? (Math.max(g.l||0,g.r||0)||null) : null;   // g.g(예상)는 빼고 센다
 }
 
 function rankIn(arr,v,dir){
@@ -385,6 +401,34 @@ function render(){
     <div class="verdict">${[["수면",j.sleep],["활동",j.act],["스트레스",j.stress]].map(([t,g])=>
       `<div class="vc"><div class="t">${t}</div><div class="d" style="background:${GCOLOR[g]}"></div>
        <div class="v">${GRADE[g]}</div></div>`).join("")}</div>`;
+
+  // 예상을 적어 두었으면 얼마나 맞췄는지 먼저 보여준다
+  const gz=[];
+  const gg=(m.grip&&m.grip!=="skip")?m.grip.g:null, gv2=gripOf(r);
+  if(gg && gv2) gz.push(["악력", gg, gv2, "kg"]);
+  const hg=(m.hr&&m.hr!=="skip")?m.hr.g:null;
+  if(hg && bpm) gz.push(["심박수", hg, bpm, "회"]);
+  if(gz.length){
+    h+=`<h2 class="sec">내 예상은 얼마나 맞았을까?</h2>`;
+    gz.forEach(([nm,gu,re,u])=>{
+      const d=Math.round(Math.abs(re-gu)*10)/10;
+      const how = d<=re*0.08 ? "거의 맞췄어요!" : d<=re*0.2 ? "꽤 비슷했어요" : "많이 달랐네요";
+      h+=`<div class="guess">${nm} — 예상 <b>${gu}${u}</b> · 실제 <b>${re}${u}</b>
+        · ${d}${u} 차이. ${how}</div>`;
+    });
+  }
+
+  const beat = m.ekgBpm || bpm;
+  if(beat){
+    h+=`<div class="beat">
+      <svg class="hb" viewBox="0 0 32 30" style="animation-duration:${(60/beat).toFixed(3)}s" aria-hidden="true">
+        <path d="M16,29 C16,29 2,20.5 2,11.5 C2,6.3 6,2 10.6,2 C13.1,2 15.1,3.4 16,5.3
+                 C16.9,3.4 18.9,2 21.4,2 C26,2 30,6.3 30,11.5 C30,20.5 16,29 16,29 Z"/>
+      </svg>
+      <div><div class="bpm">${beat} BPM</div>
+        <div class="bt">1분에 ${beat}번. 지금 네 심장이 이 속도로 뛰고 있어요.</div></div>
+    </div>`;
+  }
 
   if(m.ekgWave && m.ekgWave.length){
     h+=`<h2 class="sec">내 심장의 전기 신호</h2>

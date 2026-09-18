@@ -242,6 +242,17 @@ body.board #board{display:flex}
 #board .cnt b{font-size:clamp(20px,2.6vw,36px);color:var(--ink);font-weight:700;
   font-family:"IBM Plex Mono",monospace}
 #board .none{font-size:clamp(16px,2vw,26px);color:var(--ink3);text-align:center}
+#board .best{width:100%;display:flex;flex-direction:column-reverse;gap:1vh}
+#board .brow{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:2vw;align-items:center;
+  background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:1.4vh 2vw}
+#board .brow.bhead{background:none;border:0;padding:0 2vw;font-size:clamp(12px,1.4vw,19px);
+  color:var(--ink3);text-align:center}
+#board .bn{font-size:clamp(14px,1.8vw,26px);font-weight:700}
+#board .bn small{display:block;font-size:clamp(11px,1.2vw,16px);color:var(--ink3);font-weight:400}
+#board .brow > div{text-align:center}
+#board .brow b{display:block;font-size:clamp(20px,3vw,44px);color:var(--trace);
+  font-family:"IBM Plex Mono",monospace;line-height:1.1}
+#board .brow small{font-size:clamp(11px,1.2vw,16px);color:var(--ink3);font-family:"IBM Plex Mono",monospace}
 #board table{font-size:clamp(12px,1.3vw,17px);min-width:0}
 #board .tbl{overflow:auto;max-height:100%;width:100%}
 .bchart .grid{stroke:var(--line);stroke-width:1;fill:none}
@@ -689,8 +700,12 @@ function sheetHtml(r){
 
   const rows=[];
   const bpm=(m.hr&&m.hr!=="skip")?m.hr.bpm:null;
-  if(bpm!=null) rows.push(row("심박수", bpm+" BPM",
-    pctText(rankIn(pool.hr,bpm,"low")), pool.hr&&pool.hr.length?`평균 ${Math.round(mean(pool.hr))} BPM`:""));
+  if(bpm!=null){
+    const gs=(m.hr&&m.hr!=="skip")?m.hr.g:null;
+    rows.push(row("심박수", bpm+" BPM", pctText(rankIn(pool.hr,bpm,"low")),
+      (pool.hr&&pool.hr.length?`평균 ${Math.round(mean(pool.hr))} BPM`:"")
+      + (gs?` · 내 예상은 ${gs}회였어요`:"")));
+  }
   const gv=gripOf(r);
   if(gv){
     let side="";
@@ -698,8 +713,10 @@ function sheetHtml(r){
       const hi=Math.max(m.grip.l,m.grip.r), lo=Math.min(m.grip.l,m.grip.r);
       side=` · 좌 ${m.grip.l} / 우 ${m.grip.r}` + (lo?` · 차이 ${Math.round((hi-lo)/lo*100)}%`:"");
     }
+    const gs=(m.grip&&m.grip!=="skip")?m.grip.g:null;
     rows.push(row("악력 (최고)", gv+" kg", pctText(rankIn(pool.grip,gv,"high")),
-      (pool.grip&&pool.grip.length?`평균 ${mean(pool.grip).toFixed(1)} kg`:"")+side));
+      (pool.grip&&pool.grip.length?`평균 ${mean(pool.grip).toFixed(1)} kg`:"")+side
+      + (gs?` · 내 예상은 ${gs}kg였어요`:"")));
   }
   if(m.reactMs) rows.push(row("반응속도", m.reactMs+" ms",
     pctText(rankIn(pool.react,m.reactMs,"low")), pool.react&&pool.react.length?`평균 ${Math.round(mean(pool.react))} ms`:""));
@@ -1386,9 +1403,14 @@ function nameKey(id, name){
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
 /* ═══════ 측정 입력 ═══════ */
+/* 재는 사람이 먼저 "얼마나 나올 것 같아?"를 묻고 넣는다.
+   예측 → 측정 → 비교가 이 부스가 가르치려는 것이고, 틀리는 순간이 제일 재밌다.
+   g 는 예상값. 다른 칸과 똑같이 m[항목][칸] 으로 저장된다. */
 const MEAS=[
-  {k:"hr",    n:"심박수",    fields:[{k:"bpm",lab:"BPM",unit:"회/분"}]},
-  {k:"grip",  n:"악력",      fields:[{k:"l",lab:"왼손",unit:"kg"},{k:"r",lab:"오른손",unit:"kg"}]},
+  {k:"hr",    n:"심박수",    calc:"hr",
+   fields:[{k:"g",lab:"예상은?",unit:"회/분"},{k:"bpm",lab:"실제",unit:"회/분"}]},
+  {k:"grip",  n:"악력",      calc:"grip",
+   fields:[{k:"g",lab:"예상은?",unit:"kg"},{k:"l",lab:"왼손",unit:"kg"},{k:"r",lab:"오른손",unit:"kg"}]},
   {k:"react", n:"반응속도",  fields:[{k:"a",lab:"1회",unit:"cm"},{k:"b",lab:"2회",unit:"cm"},{k:"c",lab:"3회",unit:"cm"}], calc:"react"},
   {k:"eye",   n:"우세눈",    pick:[["왼쪽","L"],["오른쪽","R"]]},
   {k:"ekg",   n:"EKG",       pick:[["측정함","Y"],["안 함","N"]]},
@@ -1642,14 +1664,27 @@ document.getElementById("measureBody").addEventListener("drop",e=>{
   if(d && f && target){ e.preventDefault(); loadEkgFile(f); }
 });
 
+/* 얼마나 잘 맞췄는지 그 자리에서 보여준다. 이 한 줄이 재미의 대부분이다. */
+function guessLine(guess, real, unit){
+  if(guess==null || real==null || !real) return "";
+  const d=Math.round(Math.abs(real-guess)*10)/10;
+  const how = d<=real*0.08 ? "거의 맞췄어요!" : d<=real*0.2 ? "꽤 비슷해요" : "많이 달랐네요";
+  return `예상 ${guess}${unit} · 실제 ${real}${unit} — ${d}${unit} 차이. ${how}`;
+}
 function updateCalc(){
-  const el=document.getElementById("calc_react");
-  if(!el) return;
-  const vals=["a","b","c"].map(k=>{
-    const i=document.querySelector(`[data-mf="react.${k}"]`);
-    return i&&i.value!==""?cm2ms(i.value):null;
-  }).filter(v=>v!==null);
-  el.textContent = vals.length ? `${vals.join(" / ")} ms · 최고 ${Math.min(...vals)} ms` : "";
+  const num=sel=>{ const i=document.querySelector(`[data-mf="${sel}"]`);
+    return (i&&i.value!=="")?Number(i.value):null; };
+  const set=(k,txt)=>{ const el=document.getElementById("calc_"+k); if(el) el.textContent=txt; };
+  if(document.getElementById("calc_react")){
+    const vals=["a","b","c"].map(k=>{const v=num("react."+k); return v!=null?cm2ms(v):null;})
+      .filter(v=>v!==null);
+    set("react", vals.length ? `${vals.join(" / ")} ms · 최고 ${Math.min(...vals)} ms` : "");
+  }
+  if(document.getElementById("calc_grip")){
+    const l=num("grip.l"), r=num("grip.r");
+    set("grip", guessLine(num("grip.g"), (l!=null||r!=null)?Math.max(l||0,r||0):null, "kg"));
+  }
+  if(document.getElementById("calc_hr")) set("hr", guessLine(num("hr.g"), num("hr.bpm"), "회"));
 }
 
 /* 입력칸의 값을 기록으로 거둔다. 화면을 다시 그리기 전에 반드시 먼저 부를 것. */
@@ -1726,7 +1761,7 @@ const CSV_COLS=[
   ["bfast","아침"],["sweet","단음료"],["water","물"],
   ["exer","운동"],["sit","앉은시간"],["screen","화면시간"],
   ["m1","기분1"],["m2","기분2"],["m3","기분3"],
-  ["hr","심박수"],["gripL","악력좌"],["gripR","악력우"],
+  ["hr","심박수"],["hrGuess","심박예상"],["gripL","악력좌"],["gripR","악력우"],["gripGuess","악력예상"],
   ["r1","반응1cm"],["r2","반응2cm"],["r3","반응3cm"],["reactMs","반응최고ms"],
   ["eye","우세눈"],["ekg","EKG"],["ekgBpm","EKG심박"],["bpS","수축기"],["bpD","이완기"],
   ["gSleep","판정수면"],["gAct","판정활동"],["gStress","판정스트레스"],["lifeAge","생활습관나이차"]
@@ -1745,7 +1780,7 @@ function toCsv(){
       bfast:r.bfast, sweet:r.sweet, water:r.water,
       exer:r.exer, sit:r.sit, screen:r.screen,
       m1:r.m1, m2:r.m2, m3:r.m3,
-      hr:g("hr")?.bpm, gripL:g("grip")?.l, gripR:g("grip")?.r,
+      hr:g("hr")?.bpm, hrGuess:g("hr")?.g, gripL:g("grip")?.l, gripR:g("grip")?.r, gripGuess:g("grip")?.g,
       r1:g("react")?.a, r2:g("react")?.b, r3:g("react")?.c, reactMs:g("react")?m.reactMs:null,
       eye:g("eye"), ekg:g("ekg"), ekgBpm:m.ekgBpm, bpS:g("bp")?.s, bpD:g("bp")?.d,
       gSleep:GRADE[j.sleep], gAct:GRADE[j.act], gStress:GRADE[j.stress], lifeAge:la.diff
@@ -1779,13 +1814,13 @@ document.getElementById("btnRefresh").onclick=()=>{ loadAll(); renderRecords(); 
 
 function gripOf(x){
   const g=x.m&&x.m.grip;
-  return (g&&g!=="skip") ? (Math.max(g.l||0,g.r||0)||null) : null;
+  return (g&&g!=="skip") ? (Math.max(g.l||0,g.r||0)||null) : null;   // g.g(예상)는 빼고 센다
 }
 
 /* 이름·나이·번호 없이 값만 모은 분포.
    방문객 기기가 순위를 그리려고 남의 기록을 통째로 받지 않아도 되게 한다. */
 function buildStats(){
-  const grip=[],react=[],hr=[],life=[],sleep=[];
+  const grip=[],react=[],hr=[],life=[],sleep=[],gripErr=[],hrErr=[];
   recs.forEach(x=>{
     const m=x.m||{};
     const g=gripOf(x); if(g) grip.push(g);
@@ -1793,10 +1828,16 @@ function buildStats(){
     const b=(m.hr&&m.hr!=="skip")?m.hr.bpm:null; if(b) hr.push(b);
     if(x.age!=null) life.push(lifeAge(x).diff);
     if(x.sleep!=null) sleep.push(x.sleep);
+    // 실제 − 예상. 양수면 자기 몸을 얕잡아 본 것이다
+    const gg=(m.grip&&m.grip!=="skip")?m.grip.g:null;
+    if(gg && g) gripErr.push(Math.round((g-gg)*10)/10);
+    const hg=(m.hr&&m.hr!=="skip")?m.hr.g:null;
+    if(hg && b) hrErr.push(b-hg);
   });
   const asc=a=>a.sort((p,q)=>p-q);
   return {n:recs.length, upd:Date.now(),
-          grip:asc(grip), react:asc(react), hr:asc(hr), life:asc(life), sleep:asc(sleep)};
+          grip:asc(grip), react:asc(react), hr:asc(hr), life:asc(life), sleep:asc(sleep),
+          gripErr:asc(gripErr), hrErr:asc(hrErr)};
 }
 
 let statsTimer=null;
@@ -1966,6 +2007,36 @@ function bHist(vals, step, xLab, yLab, fmt){
   return bSvg(g);
 }
 
+/* 어른과 한 줄에 세우면 초등학생은 악력·반응속도에서 늘 바닥이다.
+   기록판만이라도 또래끼리 나눠야 어린이가 1등을 노려볼 수 있다. */
+const AGE_BANDS=[
+  {n:"초등 저학년", lo:0,  hi:9},
+  {n:"초등 고학년", lo:10, hi:12},
+  {n:"중·고등",     lo:13, hi:18},
+  {n:"어른",        lo:19, hi:200}
+];
+function bandRecords(){
+  return AGE_BANDS.map(b=>{
+    const inB=recs.filter(r=>r.age!=null && r.age>=b.lo && r.age<=b.hi);
+    const fast=inB.filter(r=>r.m&&r.m.reactMs).sort((x,y)=>x.m.reactMs-y.m.reactMs)[0]||null;
+    const strong=inB.map(r=>({r,g:gripOf(r)})).filter(o=>o.g).sort((x,y)=>y.g-x.g)[0]||null;
+    return {n:b.n, cnt:inB.length, fast, strong};
+  }).filter(o=>o.cnt);
+}
+/* 이름은 내걸지 않는다. 번호만으로도 본인은 안다. */
+function bestHtml(){
+  const bs=bandRecords();
+  if(!bs.length) return `<div class="none">아직 자료를 모으는 중입니다</div>`;
+  const cell=(v,who)=>v?`<div><b>${v}</b><small>${who}</small></div>`:`<div><b>—</b><small>&nbsp;</small></div>`;
+  return `<div class="best">${bs.map(o=>`<div class="brow">
+      <div class="bn">${o.n}<small>${o.cnt}명</small></div>
+      ${cell(o.fast?o.fast.m.reactMs+" ms":null, o.fast?o.fast.id:"")}
+      ${cell(o.strong?o.strong.g+" kg":null, o.strong?o.strong.r.id:"")}
+    </div>`).join("")}
+    <div class="brow bhead"><div class="bn"></div><div>가장 빠른 반응</div><div>가장 센 악력</div></div>
+  </div>`;
+}
+
 /* ── 화면 정의 ── */
 const gripBest=r=>gripOf(r);
 const reactOf=r=>(r.m&&r.m.reactMs)||null;
@@ -2006,6 +2077,16 @@ function boardScreens(){
   const B=[
     {q:`지금까지 <em>${recs.length}명</em>이 참여했어요`, tiles:true,
      cols:["항목","값"], data:()=>[], draw:()=>""},
+    {q:`오늘의 <em>기록</em> — 또래끼리 겨뤄요`, best:true,
+     cols:["또래","사람 수","가장 빠른 반응"],
+     data:()=>bandRecords().map(o=>({n:o.n, v:[o.cnt]})), draw:()=>"", grouped:true},
+    {q:`사람들은 자기 <em>악력</em>을 얼마나 잘 맞출까?`,
+     cols:["접수번호","실제−예상(kg)"],
+     data:()=>recs.map(r=>{
+       const g=r.m&&r.m.grip, real=gripOf(r);
+       return (g&&g!=="skip"&&g.g&&real)?{x:Math.round((real-g.g)*10)/10,y:0,id:r.id}:null;
+     }).filter(Boolean),
+     draw:d=>bHist(d.map(p=>p.x),5,"실제가 예상보다 (kg)","사람 수",v=>v>0?"+"+v:v)},
     {q:`오늘의 <em>생활습관 나이</em>는 어떻게 퍼져 있을까?`,
      cols:["접수번호","생활습관 나이 차이(년)"],
      data:()=>recs.filter(r=>r.age!=null).map(r=>({x:lifeAge(r).diff,y:0,id:r.id})),
@@ -2063,6 +2144,7 @@ function drawBoard(){
   document.getElementById("bDots").innerHTML=sc.map((_,i)=>`<i class="${i===bIdx?"on":""}"></i>`).join("");
   const plot=document.getElementById("bPlot");
   if(cur.tiles){ plot.innerHTML=statTiles(); return; }
+  if(cur.best){ plot.innerHTML=bestHtml(); return; }
   const d=cur.data();
   const cnt=cur.grouped ? d.reduce((a,g)=>a+g.v.length,0) : d.length;
   if(cnt<5){ plot.innerHTML=`<div class="none">아직 자료를 모으는 중입니다<br>지금까지 ${cnt}명</div>`; return; }
