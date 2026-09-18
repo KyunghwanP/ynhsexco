@@ -164,6 +164,7 @@ input:focus,.opt:focus-visible,button:focus-visible{outline:2.5px solid var(--tr
 .vc .v{font-size:14.5px;font-weight:500}
 .agebox{background:var(--trace-bg);border-radius:14px;padding:20px;text-align:center;margin-bottom:18px}
 .agebox .big{font-size:38px;font-weight:700;color:var(--trace);line-height:1.2}
+.agebox .big .dv{font-size:24px;opacity:.75}
 .agebox .sub{font-size:14px;color:var(--ink2);margin-top:4px}
 .agebox .cause{font-size:14.5px;margin-top:10px;color:var(--ink2)}
 .disclaim{
@@ -650,7 +651,8 @@ const SHEET_CSS = `
   .age{border:1.4pt solid #000;padding:2.6mm 3.5mm;margin-top:2.5mm;display:flex;
     align-items:center;gap:4.5mm}
   .age .big{font-family:"Consolas",monospace;font-size:21pt;font-weight:700;line-height:1;
-    white-space:nowrap}
+    white-space:nowrap;text-align:center}
+  .age .big .dv{display:block;font-size:11pt;font-weight:500;margin-top:1mm}
   .age .txt{flex:1;font-size:9pt}
   .age .warn{font-size:9.5pt;font-weight:700;margin-top:.8mm}
   .rx{border:.8pt dashed #555;padding:2.2mm 3.5mm;margin-top:2.5mm;background:#fafafa}
@@ -773,16 +775,16 @@ function sheetHtml(r){
     </tr></table>
 
     <h2 class="sec">생활습관 판정 <span style="font-weight:400;font-size:9pt;color:#555">— 키캡 색 판독</span></h2>
-    <table><tr><th style="width:auto">수면</th><th style="width:auto">활동</th><th style="width:auto">스트레스</th></tr>
+    <table><tr><th style="width:auto">수면량</th><th style="width:auto">활동량</th><th style="width:auto">스트레스량</th></tr>
       <tr>${[j.sleep,j.act,j.stress].map(g=>
         `<td style="text-align:center">${GRADE[g]} · ${GNAME[g]} 키캡</td>`).join("")}</tr></table>
     <p style="font-size:9pt;color:#555;margin:1.5mm 0 0">건강 상태가 아니라 생활습관에 대한 것입니다.</p>
 
     <div class="age">
-      <div class="big">${signedYears(la.diff)}</div>
+      <div class="big">${r.age+la.diff}세<span class="dv">(${signedYears(la.diff)})</span></div>
       <div class="txt">
-        <div><b>생활습관 나이</b> · 실제 ${r.age}세 기준</div>
-        <div>${la.cause?escapeHtml(la.cause)+"이(가) 가장 많이 끌어올렸어요":"모든 항목이 좋아요"}</div>
+        <div><b>생활습관 나이</b> · 실제 ${r.age}세</div>
+        <div>${la.cause?escapeHtml(la.cause)+"이 가장 많이 끌어올렸어요":"모든 항목이 좋아요"}</div>
         <div class="warn">재미로 계산한 지수입니다. 의학적 진단이 아닙니다.</div>
         <div style="font-size:9pt;color:#444">가중치는 우리가 임의로 정했습니다. 뒷면을 읽어 보세요.</div>
       </div>
@@ -917,11 +919,15 @@ function lifeAge(r){
     (()=>{const m=((r.m1??2)+(r.m2??2)+(4-(r.m3??2)))/3; return m<=1.3?-2 : m<=2.4?0 : 2;})()
   ];
   const sum=pts.reduce((a,b)=>a+b,0);
-  const diff=Math.max(-8,Math.min(8,Math.round(sum*0.8)));
-  const names=["수면","운동","화면 시간","아침식사","기분"];
+  /* 고정 ±8년을 더하면 어린 학생은 실제 나이 밑으로 내려가 음수가 된다(7세−8=−1세).
+     비율로 바꾸면 나이에 맞춰 늘고 줄어 7세는 5세까지만 내려간다.
+     합계 ±10 → ±22%. 18세면 ±4년이라 예전 폭과 비슷하고, 4장의 ±8년 제한은 그대로 둔다. */
+  const pct=sum*0.022;
+  const diff=Math.max(-8, Math.min(8, Math.round((r.age||17)*pct)));
+  const names=["수면량","운동량","화면 시간","아침밥","기분"];   // 전부 "이"가 붙는 말로 통일
   let worst=-1,wi=0;
   pts.forEach((p,i)=>{ if(p>worst){worst=p;wi=i;} });
-  return {diff, cause: worst>0? names[wi] : null};
+  return {diff, pct, cause: worst>0? names[wi] : null};
 }
 
 const GRADE=["양호","주의","관리"];
@@ -931,10 +937,10 @@ const GNAME=["초록","노랑","주황"];          // 키캡 색 판독용
 /* 발목을 잡은 항목이 곧 처방이 된다 (기획서 06).
    생활습관에 대한 말만 쓴다. 몸 상태를 진단하는 문장은 넣지 않는다. */
 const ADVICE={
-  "수면":     "오늘은 30분만 일찍 누워 보세요. 잠은 밀린 만큼 한 번에 채워지지 않아요.",
-  "운동":     "하루 10분만 몸을 움직여 보세요. 계단으로 올라가는 것도 운동이에요.",
+  "수면량":   "오늘은 30분만 일찍 누워 보세요. 잠은 밀린 만큼 한 번에 채워지지 않아요.",
+  "운동량":   "하루 10분만 몸을 움직여 보세요. 계단으로 올라가는 것도 운동이에요.",
   "화면 시간":"화면을 20분 봤으면 20초는 먼 곳을 보세요. 눈에도 쉬는 시간이 필요해요.",
-  "아침식사": "내일 아침에 뭐든 한 입 먹어 보세요. 우유 한 잔도 괜찮아요.",
+  "아침밥":   "내일 아침에 뭐든 한 입 먹어 보세요. 우유 한 잔도 괜찮아요.",
   "기분":     "오늘 있었던 일을 누군가에게 말해 보세요. 말하고 나면 조금 가벼워져요."
 };
 const ADVICE_NONE="지금 하고 있는 그대로 이어가세요. 잘 지내고 있어요.";
@@ -1360,12 +1366,12 @@ function showTicket(r){
     </div>
     ${ecgSvg()}
     <div class="agebox">
-      <div class="big">${signedYears(la.diff)}</div>
-      <div class="sub">생활습관 나이 · 실제 ${r.age}세 기준</div>
-      <div class="cause">${la.cause?escapeHtml(la.cause)+"이(가) 가장 많이 끌어올렸어요":"모든 항목이 좋아요"}</div>
+      <div class="big">${r.age+la.diff}세 <span class="dv">(${signedYears(la.diff)})</span></div>
+      <div class="sub">생활습관 나이 · 실제 ${r.age}세</div>
+      <div class="cause">${la.cause?escapeHtml(la.cause)+"이 가장 많이 끌어올렸어요":"모든 항목이 좋아요"}</div>
     </div>
     <div class="verdict">
-      ${[["수면",j.sleep],["활동",j.act],["스트레스",j.stress]].map(([t,g])=>`
+      ${[["수면량",j.sleep],["활동량",j.act],["스트레스량",j.stress]].map(([t,g])=>`
         <div class="vc"><div class="t">${t}</div><div class="d" style="background:${GCOLOR[g]}"></div><div class="v">${GRADE[g]}</div></div>
       `).join("")}
     </div>
@@ -2096,11 +2102,11 @@ function boardScreens(){
      data:()=>pairs(r=>r.sleep, reactOf),
      draw:d=>bScatter(d,"하루 수면 (시간)","반응속도 (ms)",x=>x)},
     {q:`스트레스가 높으면 안정 시 <em>심박수</em>가 빠를까?`,
-     cols:["기분","사람 수","평균 심박(BPM)"],
-     data:()=>["양호","보통","낮음"].map((nm,i)=>({
+     cols:["스트레스량","사람 수","평균 심박(BPM)"],
+     data:()=>GRADE.map((nm,i)=>({
        n:nm, v:recs.filter(r=>judge(r).stress===i).map(bpmOf).filter(v=>v!=null)
      })).filter(g=>g.v.length),
-     draw:d=>bGroups(d,"기분 척도","안정 시 심박 (BPM)"), grouped:true}
+     draw:d=>bGroups(d,"스트레스량","안정 시 심박 (BPM)"), grouped:true}
   ];
   return BOARD==="a" ? A : BOARD==="b" ? B : A.concat(B);
 }
