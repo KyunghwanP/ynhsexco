@@ -220,8 +220,19 @@ td.n{font-family:"IBM Plex Mono",monospace}
 /* ── 실시간 보드 ── */
 body.board{overflow:hidden;padding:0}
 body.board header,body.board main{display:none}
+/* 결과 조회는 방문객 화면이다. 문진·기록·설정 탭이 눌리면 안 된다. */
+body.ronly header{display:none}
 #board{display:none;position:fixed;inset:0;background:var(--paper);
   flex-direction:column;padding:2.4vh 2.6vw;gap:1.6vh}
+/* 다음 화면까지 남은 시간. 2m 밖에서도 읽히는 유일한 신호라 굵게 둔다. */
+#bBar{position:absolute;left:0;top:0;height:5px;width:0;background:var(--trace);
+  border-radius:0 3px 3px 0}
+#bBar.run{animation:bfill 8s linear forwards}
+@keyframes bfill{from{width:0}to{width:100%}}
+#bStage{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:1.6vh}
+#bStage.out{opacity:0;transform:translateY(-10px);transition:opacity .17s ease-in,transform .17s ease-in}
+#bStage.in{animation:bin .26s cubic-bezier(.22,.8,.3,1) both}
+@keyframes bin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 body.board #board{display:flex}
 #board .qline{font-size:clamp(20px,3.2vw,44px);font-weight:700;letter-spacing:-.02em;
   line-height:1.25;text-align:center;flex:0 0 auto}
@@ -231,8 +242,9 @@ body.board #board{display:flex}
 #board .foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
   gap:2vw;font-size:clamp(13px,1.5vw,20px);color:var(--ink3)}
 #board .dots{display:flex;gap:7px}
-#board .dots i{width:10px;height:10px;border-radius:50%;background:var(--line2);display:block}
-#board .dots i.on{background:var(--trace)}
+#board .dots i{width:10px;height:10px;border-radius:5px;background:var(--line2);display:block;
+  transition:width .26s ease,background .26s ease}
+#board .dots i.on{background:var(--trace);width:30px}
 #board .cnt b{font-size:clamp(20px,2.6vw,36px);color:var(--ink);font-weight:700;
   font-family:"IBM Plex Mono",monospace}
 #board .none{font-size:clamp(16px,2vw,26px);color:var(--ink3);text-align:center}
@@ -377,8 +389,11 @@ body.board #board{display:flex}
 </main>
 
 <div id="board">
-  <div class="qline" id="bQ"></div>
-  <div class="plot" id="bPlot"></div>
+  <div id="bBar"></div>
+  <div id="bStage">
+    <div class="qline" id="bQ"></div>
+    <div class="plot" id="bPlot"></div>
+  </div>
   <div class="foot">
     <div class="dots" id="bDots"></div>
     <div class="cnt">참여 <b id="bN">0</b>명</div>
@@ -428,7 +443,7 @@ try{
     stats(){ return getDoc(statsRef).then(s=>s.exists()?s.data():null); },
     putStats(o){ return setDoc(statsRef, o); },
     watch(cb, status){
-      onSnapshot(col,
+      onSnapshot(col, { includeMetadataChanges: true },
         snap=>{
           cb(snap.docs.map(d=>d.data()));
           status(snap.metadata.fromCache ? "cache" : "live");
@@ -458,7 +473,14 @@ let recs=[];
 
 function loadAll(){
   try{const c=localStorage.getItem(CFG); if(c) cfg={...cfg,...JSON.parse(c)};}catch(e){}
+  // 결과 조회로 들어왔으면 이 기기에 기록이 있어도 찾는 한 건만 남긴다.
+  // 통째로 버리면 부스 기기가 인터넷 없이 결과를 못 열고,
+  // 통째로 실으면 부스에서 쓰던 기기로 QR을 열었을 때 남의 기록이 화면에 오른다.
   try{const r=localStorage.getItem(KEY); recs=r?JSON.parse(r):[];}catch(e){recs=[];}
+  if(RESULT_ONLY){
+    const hit=findRec(pendingR||"");
+    recs = hit ? [hit] : [];
+  }
 }
 function saveLocal(){
   if(RESULT_ONLY) return;
@@ -468,6 +490,7 @@ function saveLocal(){
 /* 로컬에 먼저 쓰고, 가능하면 서버에도 올린다.
    서버가 죽어도 로컬은 남으므로 데이터를 잃지 않는다. */
 function saveAll(one){
+  if(RESULT_ONLY) return;          // 결과 조회 화면은 읽기 전용. 서버에 아무것도 쓰지 않는다
   saveLocal();
   if(!window.FB || !window.FB.on) return;
   const list = one ? [one] : recs;
@@ -1803,7 +1826,7 @@ function showResult(id){
   document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected","false"));
   ["intake","measure","records","admin"].forEach(x=>document.getElementById(x).hidden=true);
   box.hidden=false;
-  const home=`<div class="nav-btns"><button class="btn go" onclick="location.href=location.pathname">처음으로</button></div>`;
+  const home=`<div class="nav-btns"><button class="btn go" onclick="location.reload()">다시 불러오기</button></div>`;
   if(!r){
     box.innerHTML = fbSettled
       ? `<div class="empty"><p>${escapeHtml(id)} 번 기록을 찾을 수 없습니다.</p>
@@ -2107,14 +2130,29 @@ function drawBoard(){
   if(cnt<5){ plot.innerHTML=`<div class="none">아직 자료를 모으는 중입니다<br>지금까지 ${cnt}명</div>`; return; }
   plot.innerHTML = bTable ? boardTable(cur,d) : cur.draw(d);
 }
+let bAnim=false;
 function boardGo(step){
+  if(bAnim) return;                                  // 전환 중 겹치지 않게
   const sc=boardScreens();
-  bIdx=(bIdx+(step||1)+sc.length)%sc.length;
-  drawBoard(); boardTimer();
+  const nx=(bIdx+(step||1)+sc.length)%sc.length;
+  if(nx===bIdx){ boardTimer(); return; }
+  bAnim=true;
+  const st=document.getElementById("bStage");
+  st.classList.add("out");
+  setTimeout(()=>{
+    bIdx=nx; drawBoard();
+    st.classList.remove("out"); st.classList.add("in");
+    setTimeout(()=>{ st.classList.remove("in"); bAnim=false; }, 280);
+  }, 175);
+  boardTimer();
 }
 function boardTimer(){
   clearInterval(bTimer);
   bTimer=setInterval(()=>boardGo(1), 8000);
+  // 남은 시간 막대를 처음부터 다시 그린다. 클래스를 뗐다 붙이기만 하면
+  // 브라우저가 같은 애니메이션으로 보고 다시 시작하지 않는다.
+  const bar=document.getElementById("bBar");
+  if(bar){ bar.classList.remove("run"); void bar.offsetWidth; bar.classList.add("run"); }
 }
 function startBoard(){
   document.body.classList.add("board");
@@ -2203,7 +2241,7 @@ renderStep();
 renderMeasure();
 
 if(BOARD) startBoard();
-else if(pendingR) showResult(pendingR);
+else if(pendingR){ document.body.classList.add("ronly"); showResult(pendingR); }
 
 /* ═══════ 서버 연결 ═══════ */
 /* 방문객 기기는 컬렉션 전체를 구독하지 않는다.
@@ -2213,7 +2251,7 @@ async function loadResultOnly(id){
     const [rec, st] = await Promise.all([window.FB.one(id), window.FB.stats()]);
     if(rec) mergeRemote([rec]);
     if(st) stats=st;
-    setNet(rec?"live":"cache");
+    setNet("live");          // 못 찾은 것과 연결이 끊긴 것은 다르다
   }catch(err){
     console.warn("result load", err.code||err);
     setNet("error");
