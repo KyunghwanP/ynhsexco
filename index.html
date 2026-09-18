@@ -2,6 +2,11 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<script>
+// 결과 조회는 result.html 이 맡는다. 예전에 뽑은 번호표의 QR 로 들어와도 넘긴다.
+(function(){ var m=location.search.match(/[?&]r=([^&#]+)/);
+  if(m) location.replace("result.html?r="+m[1]); })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>BIO-DATA 탐사대 · 검진 입력</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -141,15 +146,6 @@ input:focus,.opt:focus-visible,button:focus-visible{outline:2.5px solid var(--tr
 .ticket .qr svg{display:block;width:100%;height:100%}
 .ecg{display:block;width:100%;height:30px;margin-bottom:16px;opacity:.85}
 
-/* 순위 막대 */
-.rank{background:var(--card);border:1.5px solid var(--line);border-radius:13px;padding:16px;margin-bottom:11px}
-.rank .h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;gap:10px}
-.rank .h b{font-size:16px;font-weight:500}
-.rank .h em{font-style:normal;font-size:20px;font-weight:600;font-family:"IBM Plex Mono",monospace;color:var(--trace)}
-.bar-wrap{height:9px;background:var(--line);border-radius:5px;position:relative}
-.bar-me{position:absolute;top:-4px;width:4px;height:17px;background:var(--trace);border-radius:2px}
-.rank .cap{font-size:13.5px;color:var(--ink3);margin-top:8px;display:flex;justify-content:space-between;gap:10px}
-
 /* 스캐너 */
 #scan{position:fixed;inset:0;z-index:70;background:#000;display:none;flex-direction:column}
 #scan.on{display:flex}
@@ -220,8 +216,6 @@ td.n{font-family:"IBM Plex Mono",monospace}
 /* ── 실시간 보드 ── */
 body.board{overflow:hidden;padding:0}
 body.board header,body.board main{display:none}
-/* 결과 조회는 방문객 화면이다. 문진·기록·설정 탭이 눌리면 안 된다. */
-body.ronly header{display:none}
 #board{display:none;position:fixed;inset:0;background:var(--paper);
   flex-direction:column;padding:2.4vh 2.6vw;gap:1.6vh}
 /* 다음 화면까지 남은 시간. 2m 밖에서도 읽히는 유일한 신호라 굵게 둔다. */
@@ -385,7 +379,6 @@ body.board #board{display:flex}
   </div>
 </section>
 
-<section id="result" hidden></section>
 </main>
 
 <div id="board">
@@ -414,7 +407,7 @@ body.board #board{display:flex}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         collection, doc, getDoc, setDoc, onSnapshot }
+         collection, doc, setDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -438,9 +431,6 @@ try{
   window.FB = {
     on: true,
     save(rec){ return setDoc(doc(col, rec.id), rec, { merge:true }); },
-    // 결과 조회용. 방문객 기기는 컬렉션 전체가 아니라 이 둘만 읽는다.
-    one(id){ return getDoc(doc(col, id)).then(s=>s.exists()?s.data():null); },
-    stats(){ return getDoc(statsRef).then(s=>s.exists()?s.data():null); },
     putStats(o){ return setDoc(statsRef, o); },
     watch(cb, status){
       onSnapshot(col, { includeMetadataChanges: true },
@@ -464,33 +454,21 @@ window.dispatchEvent(new Event("fb-ready"));
 
 /* ═══════ 저장소 ═══════ */
 const KEY="biodata.records.v1", CFG="biodata.config.v1";
-/* ?r= 로 들어온 결과 조회는 방문자 개인 기기다.
-   순위 계산에 남의 기록이 필요하지만 그 기기에 남겨두지는 않는다. */
-const RESULT_ONLY = new URLSearchParams(location.search).has("r");
 const remoteUpd = new Map();   // 서버가 가진 id별 upd. 중복 업로드를 막는다
 let cfg={dev:"A",day:1,autoPrint:true,station:"all"};
 let recs=[];
 
 function loadAll(){
   try{const c=localStorage.getItem(CFG); if(c) cfg={...cfg,...JSON.parse(c)};}catch(e){}
-  // 결과 조회로 들어왔으면 이 기기에 기록이 있어도 찾는 한 건만 남긴다.
-  // 통째로 버리면 부스 기기가 인터넷 없이 결과를 못 열고,
-  // 통째로 실으면 부스에서 쓰던 기기로 QR을 열었을 때 남의 기록이 화면에 오른다.
   try{const r=localStorage.getItem(KEY); recs=r?JSON.parse(r):[];}catch(e){recs=[];}
-  if(RESULT_ONLY){
-    const hit=findRec(pendingR||"");
-    recs = hit ? [hit] : [];
-  }
 }
 function saveLocal(){
-  if(RESULT_ONLY) return;
   try{ localStorage.setItem(KEY,JSON.stringify(recs)); }
   catch(e){ toast("저장 공간이 부족합니다. CSV를 내려받고 비우세요"); }
 }
 /* 로컬에 먼저 쓰고, 가능하면 서버에도 올린다.
    서버가 죽어도 로컬은 남으므로 데이터를 잃지 않는다. */
 function saveAll(one){
-  if(RESULT_ONLY) return;          // 결과 조회 화면은 읽기 전용. 서버에 아무것도 쓰지 않는다
   saveLocal();
   if(!window.FB || !window.FB.on) return;
   const list = one ? [one] : recs;
@@ -527,7 +505,7 @@ function mergeRemote(list){
   if(changed && newest && BOARD) flashPoint(newest);
   if(changed){
     recs.sort((a,b)=>String(a.at).localeCompare(String(b.at)));
-    if(!RESULT_ONLY) saveLocal();
+    saveLocal();
     if(!document.getElementById("records").hidden) renderRecords();
   }
   return changed;
@@ -539,7 +517,8 @@ function setNet(state){
   el.className="dev "+cls; el.textContent=txt;
 }
 
-const baseUrl=()=>location.origin+location.pathname;
+// 같은 폴더의 result.html 을 가리킨다
+const baseDir=()=>location.origin+location.pathname.replace(/[^/]*$/,"");
 
 /* ═══════ QR ═══════ */
 function qrSvg(text,cell){
@@ -549,7 +528,11 @@ function qrSvg(text,cell){
   for(let r=0;r<n;r++) for(let x=0;x<n;x++) if(q.isDark(r,x)) d+=`M${x*c+m},${r*c+m}h${c}v${c}h-${c}z`;
   return `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
 }
-function qrFor(id){ return qrSvg(baseUrl()+"?r="+encodeURIComponent(id),1); }
+/* 번호와 이름이 둘 다 맞아야 열리도록 열쇠를 함께 담는다.
+   번호만 바꾼 주소로는 남의 결과가 열리지 않는다. */
+function qrFor(id, name){
+  return qrSvg(baseDir()+"result.html?r="+encodeURIComponent(id)+"&k="+nameKey(id,name), 1);
+}
 
 /* ═══════ 라벨 인쇄 ═══════ */
 function labelHtml(r){
@@ -559,7 +542,7 @@ function labelHtml(r){
     <div class="ln">${escapeHtml(r.id)}</div>
     <div class="lw">${escapeHtml(r.name)} · ${r.age}세 · ${escapeHtml(r.sex)}</div>
     <div class="ld">${ymd} · ${r.day}일차 · 혈액형 ${escapeHtml(r.blood)}</div>
-    <div class="lq">${qrFor(r.id)}</div>
+    <div class="lq">${qrFor(r.id, r.name)}</div>
     <div class="lf">스캔하면 결과</div>`;
 }
 
@@ -696,7 +679,7 @@ const PANELS=[
 ];
 
 function sheetHtml(r){
-  const m=r.m||{}, j=judge(r), la=lifeAge(r), pool=stats||buildStats();
+  const m=r.m||{}, j=judge(r), la=lifeAge(r), pool=buildStats();
   const d=new Date(r.at||Date.now());
   const ymd=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
   const hhmm=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
@@ -794,7 +777,7 @@ function sheetHtml(r){
       <div class="msg"><b>교육용 체험이며 의학적 진단이 아닙니다.</b><br>
         오늘 잰 값으로 몸 상태를 판단할 수 없습니다. 궁금한 점은 병원에서 확인하세요.<br>
         <span style="color:#555">영남고등학교 · 과학축전 대구 엑스코</span></div>
-      <div class="qr">${qrFor(r.id)}<small>스캔하면 내 결과</small></div>
+      <div class="qr">${qrFor(r.id, r.name)}<small>스캔하면 내 결과</small></div>
     </div>
   </div>`;
 
@@ -1356,7 +1339,7 @@ function showTicket(r){
     <div class="ticket">
       <div class="left"><div class="lbl">접수번호</div><div class="num mono">${escapeHtml(r.id)}</div>
         <div class="who">${escapeHtml(r.name)} · ${r.age}세 · ${escapeHtml(r.sex)}</div></div>
-      <div class="qr">${qrFor(r.id)}</div>
+      <div class="qr">${qrFor(r.id, r.name)}</div>
     </div>
     ${ecgSvg()}
     <div class="agebox">
@@ -1384,6 +1367,20 @@ function showTicket(r){
     renderStep();
   };
   window.scrollTo({top:0,behavior:"instant"});
+}
+
+/* 번호만 바꿔서 남의 결과를 여는 것을 막는 열쇠.
+   이름을 주소에 그대로 넣으면 QR 사진만으로 이름이 읽히므로 짧게 섞어 넣는다.
+   암호가 아니다 — 장난을 막는 용도다. result.html 에도 똑같은 함수가 있다. */
+function nameKey(id, name){
+  const t=String(id||"").toUpperCase()+"|"+String(name||"").replace(/\s+/g,"").toLowerCase();
+  let a=0x811c9dc5, b=0x01000193;
+  for(let i=0;i<t.length;i++){
+    const c=t.charCodeAt(i);
+    a=Math.imul((a^c)>>>0, 16777619)>>>0;
+    b=Math.imul((b+c)>>>0, 2654435761)>>>0;
+  }
+  return a.toString(16).padStart(8,"0").slice(0,4) + b.toString(16).padStart(8,"0").slice(0,4);
 }
 
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -1779,7 +1776,6 @@ document.getElementById("btnCsv").onclick=()=>{
 document.getElementById("btnRefresh").onclick=()=>{ loadAll(); renderRecords(); toast("불러왔습니다"); };
 
 /* ═══════ 결과 조회 ═══════ */
-const pendingR=new URLSearchParams(location.search).get("r");
 
 function gripOf(x){
   const g=x.m&&x.m.grip;
@@ -1803,9 +1799,9 @@ function buildStats(){
           grip:asc(grip), react:asc(react), hr:asc(hr), life:asc(life), sleep:asc(sleep)};
 }
 
-let stats=null, statsTimer=null;
+let statsTimer=null;
 function publishStats(){
-  if(RESULT_ONLY || !window.FB || !window.FB.on || !window.FB.putStats) return;
+  if(!window.FB || !window.FB.on || !window.FB.putStats) return;
   clearTimeout(statsTimer);
   statsTimer=setTimeout(()=>{
     window.FB.putStats(buildStats()).catch(err=>console.warn("stats",err.code||err));
@@ -1819,64 +1815,6 @@ function rankIn(arr,v,dir){
   const p=Math.round(arr.filter(x=>x<v).length/arr.length*100);
   return dir==="high" ? p : 100-p;
 }
-
-let fbSettled=false;
-function showResult(id){
-  const r=findRec(id), box=document.getElementById("result");
-  document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected","false"));
-  ["intake","measure","records","admin"].forEach(x=>document.getElementById(x).hidden=true);
-  box.hidden=false;
-  const home=`<div class="nav-btns"><button class="btn go" onclick="location.reload()">다시 불러오기</button></div>`;
-  if(!r){
-    box.innerHTML = fbSettled
-      ? `<div class="empty"><p>${escapeHtml(id)} 번 기록을 찾을 수 없습니다.</p>
-          <p style="font-size:14px">번호를 다시 확인하거나 접수처에 문의하세요.</p></div>${home}`
-      : `<div class="empty"><p>기록을 불러오는 중입니다…</p>
-          <p style="font-size:14px">인터넷이 느리면 조금 걸릴 수 있습니다.</p></div>`;
-    window.scrollTo({top:0,behavior:"instant"}); return;
-  }
-  const m=r.m||{}, j=judge(r), la=lifeAge(r);
-  const pool = stats || buildStats();
-  const rows=[];
-  const gv=gripOf(r);
-  if(gv) rows.push(["악력 (최고)",gv+" kg",rankIn(pool.grip,gv,"high"),"셀수록 위쪽"]);
-  if(m.reactMs) rows.push(["반응속도",m.reactMs+" ms",rankIn(pool.react,m.reactMs,"low"),"빠를수록 위쪽"]);
-  const bpm=(m.hr&&m.hr!=="skip")?m.hr.bpm:null;
-  if(bpm) rows.push(["안정 시 심박",bpm+" BPM",rankIn(pool.hr,bpm,"low"),"낮을수록 위쪽"]);
-  rows.push(["생활습관 나이",signedYears(la.diff),rankIn(pool.life,la.diff,"low"),"낮을수록 위쪽"]);
-
-  let h=`<div class="ticket">
-      <div class="left"><div class="lbl">접수번호</div><div class="num mono">${escapeHtml(r.id)}</div>
-        <div class="who">${escapeHtml(r.name)} · ${r.age}세 · ${escapeHtml(r.sex)}</div></div>
-      <div class="qr">${qrFor(r.id)}</div></div>
-    ${ecgSvg()}
-    <div class="agebox"><div class="big">${signedYears(la.diff)}</div>
-      <div class="sub">생활습관 나이 · 실제 ${r.age}세 기준</div>
-      <div class="cause">${la.cause?escapeHtml(la.cause)+"이(가) 가장 많이 끌어올렸어요":"모든 항목이 좋아요"}</div></div>
-    <div class="verdict">${[["수면",j.sleep],["활동",j.act],["스트레스",j.stress]].map(([t,g])=>
-      `<div class="vc"><div class="t">${t}</div><div class="d" style="background:${GCOLOR[g]}"></div><div class="v">${GRADE[g]}</div></div>`).join("")}</div>
-    ${(m.ekgWave&&m.ekgWave.length)?`
-      <h2 style="font-size:19px;margin:28px 0 12px;font-weight:700">내 심장의 전기 신호</h2>
-      ${ekgChart(m.ekgWave,{theme:"screen",h:200,sec:m.ekgSec})}
-      <p style="font-size:13.5px;color:var(--ink3);margin:8px 0 0">${m.ekgSec?`${m.ekgSec.toFixed(1)}초 구간입니다. `:""}${EKG_CLEAN_NOTE}</p>
-      ${(m.ekgRaw&&m.ekgRaw.length)?`
-        <p style="font-size:13.5px;color:var(--ink3);margin:16px 0 6px">다듬기 전에는 이랬습니다.</p>
-        ${ekgChart(m.ekgRaw,{theme:"screen",h:200})}`:""}
-      <p style="font-size:13.5px;color:var(--ink3);margin:16px 0 8px">한 박동만 크게 보면 이렇습니다.</p>
-      ${ekgChart(m.ekgWave,{theme:"screen",h:340,zoom:true,annotate:true})}
-      <p style="font-size:14.5px;color:var(--ink2);margin:10px 0 0;line-height:1.6">${EKG_NOTE}</p>
-      <p style="font-size:13.5px;color:var(--ink3);margin:6px 0 0">파형은 모양만 보여 드립니다. 해석하지 않습니다.${m.ekgBpm?` 파형에서 센 심박은 ${m.ekgBpm} BPM입니다.`:""}</p>`:""}
-    <h2 style="font-size:19px;margin:28px 0 12px;font-weight:700">참여자 ${pool.n||recs.length}명 중 내 위치</h2>`;
-  rows.forEach(([t,val,p,cap])=>{
-    h+=`<div class="rank"><div class="h"><b>${t}</b><em>${val}</em></div>
-      <div class="bar-wrap">${p!=null?`<div class="bar-me" style="left:calc(${Math.max(1,Math.min(99,p))}% - 2px)"></div>`:""}</div>
-      <div class="cap"><span>${cap}</span><span>${p!=null?"상위 "+Math.max(1,100-p)+"%":"자료를 더 모으는 중"}</span></div></div>`;
-  });
-  h+=`<p class="disclaim" style="margin-top:22px"><b>교육용 체험이며 의학적 진단이 아닙니다.</b><br><b>생활습관 나이는 재미로 계산한 지수입니다.</b><br>우리가 임의로 정한 가중치로 계산했습니다.</p>${home}`;
-  box.innerHTML=h;
-  window.scrollTo({top:0,behavior:"instant"});
-}
-
 
 /* ═══════ 실시간 보드 ═══════ */
 /* 부스에서 1~2m 떨어져 보는 화면이다. 마우스가 없으므로 hover 대신
@@ -2215,7 +2153,6 @@ document.getElementById("btnWipe").onclick=()=>{
 /* ═══════ 탭 ═══════ */
 document.querySelectorAll("nav button").forEach(b=>{
   b.onclick=()=>{
-    document.getElementById("result").hidden=true;
     document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected", x===b));
     ["intake","measure","records","admin"].forEach(id=>{
       document.getElementById(id).hidden = id!==b.dataset.tab;
@@ -2241,33 +2178,12 @@ renderStep();
 renderMeasure();
 
 if(BOARD) startBoard();
-else if(pendingR){ document.body.classList.add("ronly"); showResult(pendingR); }
 
 /* ═══════ 서버 연결 ═══════ */
-/* 방문객 기기는 컬렉션 전체를 구독하지 않는다.
-   자기 문서 하나와 이름 없는 분포 집계만 받는다. */
-async function loadResultOnly(id){
-  try{
-    const [rec, st] = await Promise.all([window.FB.one(id), window.FB.stats()]);
-    if(rec) mergeRemote([rec]);
-    if(st) stats=st;
-    setNet("live");          // 못 찾은 것과 연결이 끊긴 것은 다르다
-  }catch(err){
-    console.warn("result load", err.code||err);
-    setNet("error");
-  }
-  fbSettled=true;
-  showResult(id);
-}
-
 function connectFB(){
-  if(!window.FB || !window.FB.on){ fbSettled=true; setNet("none"); if(pendingR) showResult(pendingR); return; }
-  if(RESULT_ONLY){ loadResultOnly(pendingR); return; }
+  if(!window.FB || !window.FB.on){ setNet("none"); return; }
   window.FB.watch(list=>{
     const changed=mergeRemote(list);
-    fbSettled=true;
-    // 결과 화면을 열어둔 상태에서 데이터가 도착하면 다시 그린다
-    if(pendingR && !document.getElementById("result").hidden) showResult(pendingR);
     if(target){ const t=recs.find(x=>x.id===target.id); if(t && t!==target){ target=t; } }
   }, setNet);
   // 로컬에만 있거나 로컬이 더 새 기록만 서버로 밀어올린다.
@@ -2280,12 +2196,7 @@ function connectFB(){
 }
 if(window.FB!==undefined) connectFB();
 else window.addEventListener("fb-ready",connectFB,{once:true});
-setTimeout(()=>{
-  if(window.FB===undefined){
-    fbSettled=true; setNet("none");
-    if(pendingR && !document.getElementById("result").hidden) showResult(pendingR);
-  }
-},6000);
+setTimeout(()=>{ if(window.FB===undefined) setNet("none"); },6000);
 </script>
 </body>
 </html>
