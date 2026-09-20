@@ -439,9 +439,8 @@ function render(){
       <p class="note">${m.ekgSec?`${m.ekgSec.toFixed(1)}초 구간입니다. `:""}${EKG_CLEAN_NOTE}</p>
       ${(m.ekgRaw&&m.ekgRaw.length)?`<p class="note" style="margin-top:16px">다듬기 전에는 이랬습니다.</p>
         ${ekgChart(m.ekgRaw,{theme:"screen",h:200})}`:""}
-      <h2 class="sec">심전도 읽는 법</h2>
-      <p class="note" style="margin:0 0 12px"><b>아래 그림은 교과서에 나오는 모양이지
-        내 기록이 아닙니다.</b> 사람마다 파형이 조금씩 달라서, 읽는 법은 이 보기로 설명합니다.</p>
+      <h2 class="sec">심전도 읽는 법 <span style="font-size:12px;font-weight:700;color:#fff;background:var(--ink2);border-radius:4px;padding:2px 7px;vertical-align:3px;letter-spacing:-.01em">보기 그림</span></h2>
+      <p class="note" style="margin:0 0 12px"><b>교과서에 나오는 그림입니다. 내 기록이 아니에요.</b></p>
       ${ekgChart(refWave(),{theme:"screen",h:340,zoom:true,annotate:true})}
       <p style="font-size:14.5px;color:var(--ink2);margin:10px 0 0;line-height:1.6">${EKG_NOTE}</p>
       <p class="note">위 보기와 내 파형을 견주어 보세요.</p>

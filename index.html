@@ -808,9 +808,8 @@ function sheetHtml(r){
       ${PANELS.map(([t,b],i)=>`<div class="panel">
         <h3>${i+1}. ${t}</h3><p>${b}</p></div>`).join("")}
       ${(m.ekgWave&&m.ekgWave.length)?`<div class="panel">
-        <h3>6. 심전도 읽는 법</h3>
-        <p><b>아래 그림은 교과서에 나오는 모양이지 여러분의 기록이 아닙니다.</b>
-          사람마다 파형이 조금씩 달라서, 읽는 법은 이 보기로 설명합니다. ${EKG_NOTE}</p>
+        <h3>6. 심전도 읽는 법 <span style="font-size:8.5pt;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:1px 6px;vertical-align:2.5px;letter-spacing:-.01em">보기 그림</span></h3>
+        <p><b>교과서에 나오는 그림입니다. 내 기록이 아니에요.</b> ${EKG_NOTE}</p>
         ${ekgChart(refWave(),{theme:"paper",h:250,zoom:true,annotate:true})}
         <p class="cap">가로는 시간, 세로는 전압입니다.
           봉우리 사이 칸 수를 세면 심장이 몇 번 뛰는지 알 수 있습니다.
