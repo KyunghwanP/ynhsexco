@@ -22,6 +22,11 @@ rules_version = '2';
 //                          이 규칙이 빠지면 순위가 전부
 //                          "자료를 더 모으는 중"으로 나오는데,
 //                          집계 쓰기는 실패해도 조용해서 알아채기 어렵다
+//    staff/roster        — 운영 학생 교대표 (staff.html). 방문객 기록과 무관하다.
+//                          명단 + 시간표가 문서 하나에 통째로 들어 있다.
+//                          이 규칙이 빠지면 교대표가 이 기기에만 남고
+//                          다른 학생 폰에는 안 보인다. staff.html 은 그럴 때
+//                          화면에 크게 띄운다 — 조용히 넘기면 다음 날 아침에 안다
 // ══════════════════════════════════════════════════════════════
 
 service cloud.firestore {
@@ -30,9 +35,10 @@ service cloud.firestore {
     // ───────── 1. 테스트 (현재 적용 중) ─────────
     match /records/{id} { allow read, write: if true; }
     match /stats/{id}   { allow read, write: if true; }
+    match /staff/{id}   { allow read, write: if true; }
 
     // ───────── 2. 실전 — 축전 전날 밤 교체 ─────────
-    // 위 두 줄을 주석 처리하고 아래 주석을 푼다.
+    // 위 세 줄을 주석 처리하고 아래 주석을 푼다.
     //
     // match /records/{id} {
     //   allow read: if true;
@@ -44,16 +50,22 @@ service cloud.firestore {
     //   allow create, update: if true;
     //   allow delete: if false;
     // }
+    // match /staff/{id} {
+    //   allow read: if true;
+    //   allow create, update: if true;
+    //   allow delete: if false;
+    // }
 
     // ───────── 3. 종료 후 — 축전이 끝나면 교체 ─────────
     // CSV 를 먼저 내려받고 잠근다. 잠그면 결과 조회 QR 도 동작하지 않는다.
     //
     // match /records/{id} { allow read, write: if false; }
     // match /stats/{id}   { allow read, write: if false; }
+    // match /staff/{id}   { allow read, write: if false; }
 
     // 그 밖의 경로는 언제나 막는다.
     // Firestore 규칙은 하나라도 허용하면 통과시키므로,
-    // 이 줄이 위의 records·stats 허용을 되돌리지는 않는다.
+    // 이 줄이 위의 records·stats·staff 허용을 되돌리지는 않는다.
     match /{document=**} { allow read, write: if false; }
   }
 }

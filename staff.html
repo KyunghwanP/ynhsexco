@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BIO-DATA 탐사대 · 운영 교대표</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#f7f8f7; --card:#ffffff; --ink:#13211d; --ink2:#4f615b; --ink3:#8b9995;
+  --line:#dfe5e2; --line2:#c3cdc9; --trace:#0a7d5a; --trace-bg:#e3f3ec;
+  --alert:#a33a1c; --alert-bg:#fbeae4; --amber:#8a6414; --amber-bg:#fbf1da;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#101715; --card:#18211e; --ink:#e8efec; --ink2:#a9b8b3; --ink3:#778681;
+    --line:#2a3733; --line2:#3d4d48; --trace:#3fd39b; --trace-bg:#0e2f24;
+    --alert:#f0a184; --alert-bg:#3a1c12; --amber:#e5bd6b; --amber-bg:#33280f;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101715; --card:#18211e; --ink:#e8efec; --ink2:#a9b8b3; --ink3:#778681;
+  --line:#2a3733; --line2:#3d4d48; --trace:#3fd39b; --trace-bg:#0e2f24;
+  --alert:#f0a184; --alert-bg:#3a1c12; --amber:#e5bd6b; --amber-bg:#33280f;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);
+  font-family:"Noto Sans KR",-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:16px;line-height:1.6;word-break:keep-all;padding:0 0 60px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+header{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+.bar{max-width:1180px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:10px}
+.bar b{font-size:15px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+.bar .sub{font-size:12px;color:var(--ink3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line2);
+  color:var(--ink2);white-space:nowrap}
+.chip.ok{color:var(--trace);border-color:var(--trace)}
+.chip.bad{color:var(--alert);border-color:var(--alert);background:var(--alert-bg)}
+
+nav{max-width:1180px;margin:0 auto;padding:0 16px;display:flex;gap:6px;overflow-x:auto}
+nav button{flex:0 0 auto;min-height:48px;padding:0 16px;border:0;background:none;
+  color:var(--ink3);font-size:15px;font-weight:500;font-family:inherit;cursor:pointer;
+  border-bottom:2.5px solid transparent}
+nav button[aria-selected="true"]{color:var(--trace);border-bottom-color:var(--trace)}
+
+main{max-width:1180px;margin:0 auto;padding:18px 16px 0}
+h2{font-size:18px;margin:26px 0 10px;font-weight:700}
+h2:first-child{margin-top:0}
+p.note{font-size:13.5px;color:var(--ink2);margin:6px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+
+.btn{min-height:48px;padding:0 16px;border-radius:10px;border:1.5px solid var(--line2);
+  background:var(--card);color:var(--ink);font-size:15px;font-family:inherit;cursor:pointer}
+.btn:hover{border-color:var(--trace)}
+.btn.pri{background:var(--trace);border-color:var(--trace);color:#fff;font-weight:700}
+.btn.sm{min-height:38px;font-size:13.5px;padding:0 11px}
+.btn.danger{color:var(--alert);border-color:var(--alert)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+input[type=text],input[type=time],input[type=number],select,textarea{
+  min-height:44px;padding:8px 10px;border-radius:9px;border:1.5px solid var(--line2);
+  background:var(--card);color:var(--ink);font-size:15px;font-family:inherit}
+textarea{min-height:120px;width:100%;line-height:1.7;resize:vertical}
+
+/* ── 교대표 격자 ───────────────────────────────── */
+.gwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table.grid{border-collapse:collapse;width:100%;min-width:760px}
+table.grid th,table.grid td{border:1px solid var(--line);padding:0;text-align:center;
+  font-size:13.5px;vertical-align:middle}
+table.grid thead th{background:var(--trace-bg);color:var(--ink);font-weight:700;
+  padding:9px 6px;font-size:13px;position:sticky;top:0;z-index:2}
+table.grid td.t,table.grid th.t{width:74px;background:var(--paper);font-weight:600;
+  font-family:"IBM Plex Mono",monospace;font-size:13.5px;padding:0 4px}
+table.grid td.c{width:64px;font-weight:700;font-family:"IBM Plex Mono",monospace;background:var(--paper)}
+table.grid td.c.low{color:var(--amber);background:var(--amber-bg)}
+table.grid td.c.bad{color:var(--alert);background:var(--alert-bg)}
+table.grid tr.now td{outline:2px solid var(--trace);outline-offset:-2px}
+table.grid select{width:100%;min-height:42px;border:0;border-radius:0;background:transparent;
+  font-size:13.5px;text-align:center;text-align-last:center;padding:4px 2px;cursor:pointer}
+table.grid select:focus{outline:2px solid var(--trace);outline-offset:-2px}
+table.grid td.empty{background:var(--alert-bg)}
+table.grid td.dup select{color:var(--alert);font-weight:700}
+table.grid td.ro{padding:10px 4px;font-size:13.5px}
+table.grid td.ro.none{color:var(--ink3)}
+
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink2);margin:10px 0 0}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;
+  vertical-align:-1px;border:1px solid var(--line2)}
+
+.warn{border-left:3px solid var(--alert);background:var(--alert-bg);color:var(--ink);
+  padding:11px 13px;border-radius:0 9px 9px 0;margin-bottom:8px;font-size:14px}
+.warn.amber{border-left-color:var(--amber);background:var(--amber-bg)}
+.warn b{font-family:"IBM Plex Mono",monospace}
+
+/* ── 내 시간 ───────────────────────────────────── */
+.mine{background:var(--card);border:1.5px solid var(--trace);border-radius:14px;padding:20px;margin-bottom:12px}
+.mine .who{font-size:26px;font-weight:700;color:var(--trace)}
+.mine .sum{font-size:14px;color:var(--ink2);margin-top:2px}
+.shift{display:flex;align-items:baseline;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+.shift:last-child{border-bottom:0}
+.shift .tm{font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:600;min-width:118px}
+.shift .ps{font-size:16px}
+.shift.on{color:var(--trace);font-weight:700}
+.shift .tag{font-size:11.5px;border:1px solid var(--trace);color:var(--trace);
+  border-radius:999px;padding:1px 8px;margin-left:auto}
+
+/* ── 명단 ─────────────────────────────────────── */
+table.list{border-collapse:collapse;width:100%;font-size:14.5px}
+table.list th,table.list td{border-bottom:1px solid var(--line);padding:9px 8px;text-align:left}
+table.list th{font-size:12.5px;color:var(--ink3);font-weight:600}
+table.list td.n{text-align:right;font-family:"IBM Plex Mono",monospace}
+table.list tr.hid{opacity:.45}
+.daybox{display:inline-flex;gap:4px}
+.daybox label{display:inline-flex;align-items:center;gap:3px;font-size:13px;cursor:pointer;
+  border:1.5px solid var(--line2);border-radius:8px;padding:5px 9px;min-height:36px}
+.daybox input{margin:0}
+
+.empty{text-align:center;color:var(--ink3);padding:40px 16px;font-size:15px}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);
+  background:var(--ink);color:var(--paper);padding:12px 20px;border-radius:999px;
+  font-size:14.5px;z-index:90;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:.95}
+.bigerr{background:var(--alert-bg);border:2px solid var(--alert);color:var(--ink);
+  border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:14.5px}
+.bigerr b{color:var(--alert)}
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <b>운영 교대표</b>
+    <span class="sub">BIO-DATA 탐사대 · 과학축전</span>
+    <span class="chip" id="sync">연결 중</span>
+  </div>
+  <nav>
+    <button id="tab-grid"  aria-selected="true">교대표</button>
+    <button id="tab-mine"  aria-selected="false">내 시간</button>
+    <button id="tab-roster" aria-selected="false">명단</button>
+    <button id="tab-cfg"   aria-selected="false">설정</button>
+  </nav>
+</header>
+
+<main id="app"><div class="empty">불러오는 중입니다…</div></main>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+         doc, setDoc, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCeiNE3ydmsRlb5wpdVyoKrhUQJG7bLydk",
+  authDomain: "ynhs-exco.firebaseapp.com",
+  projectId: "ynhs-exco",
+  storageBucket: "ynhs-exco.firebasestorage.app",
+  messagingSenderId: "251841405569",
+  appId: "1:251841405569:web:5c18ff70f8583cfe076380"
+};
+
+/* 이 페이지는 staff/roster 문서 하나만 읽고 쓴다.
+   records 컬렉션에는 손대지 않는다 — 방문객 기록과 아무 관계가 없다. */
+try{
+  const app = initializeApp(firebaseConfig);
+  const db  = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  });
+  const ref = doc(db, "staff", "roster");
+  window.FB = {
+    on: true,
+    save(o){ return setDoc(ref, o); },
+    watch(cb, status){
+      onSnapshot(ref, { includeMetadataChanges: true },
+        snap=>{
+          cb(snap.exists() ? snap.data() : null);
+          status(snap.metadata.fromCache ? "cache" : "live");
+        },
+        err=>{ console.warn("firestore:", err.code); status("error", err.code); }
+      );
+    }
+  };
+}catch(e){
+  console.warn("firebase init failed:", e);
+  window.FB = null;
+}
+window.dispatchEvent(new Event("fb-ready"));
+</script>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════
+   BIO-DATA 탐사대 — 운영 학생 교대표
+
+   이 파일은 방문객 검진 데이터와 아무 관계가 없다.
+   judge · lifeAge · ekgChart 같은 것을 하나도 쓰지 않으므로
+   index.html / result.html 의 "공유 블록"이 여기까지 늘어나지 않는다.
+   escapeHtml 하나만 같은 모양으로 들어 있다.
+   ══════════════════════════════════════════════════════════ */
+
+const LS_KEY = "biodata.staff.v1";
+const LS_ME  = "biodata.staff.me";
+
+function escapeHtml(s){
+  return String(s==null?"":s).replace(/[&<>"']/g, c=>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* ── 기본값 ───────────────────────────────────────────────
+   1일차 10~18시 · 2일차 10~16시 · 1시간 슬롯 = 14칸.
+   자리는 부스 동선 그대로. "유동"은 필수가 아니라서 need 가 0 이다 —
+   점심 교대나 화장실을 이 자리로 흡수한다.                         */
+const DEFAULTS = {
+  slot: 60,
+  minHeads: 3,          // 동시 최소 인원 (CLAUDE.md: 동시 3 + 유동 1)
+  maxRun: 2,            // 쉬지 않고 연달아 설 수 있는 칸 수
+  posts: ["접수·문진","혈압·심박","악력·EKG","순발력·감각","결과·굿즈","유동"],
+  need:  [1,1,1,1,1,0],
+  days: [
+    { d:1, label:"1일차", start:"10:00", end:"18:00" },
+    { d:2, label:"2일차", start:"10:00", end:"16:00" }
+  ]
+};
+
+let S = null;          // 전체 상태 { upd, by, cfg, staff[], grid{} }
+let tab = "grid";
+let dayTab = 1;
+let editable = window.innerWidth >= 900;
+let lastErr = null;
+
+/* ── 시각 계산 ───────────────────────────────────────────── */
+function t2m(t){ const p=String(t||"0:00").split(":"); return (+p[0])*60 + (+p[1]||0); }
+function m2t(m){ return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0"); }
+function slotsOf(day){
+  const out=[], end=t2m(day.end);
+  for(let m=t2m(day.start); m+S.cfg.slot<=end; m+=S.cfg.slot) out.push(m2t(m));
+  return out;
+}
+function slotLabel(t){ return t+"~"+m2t(t2m(t)+S.cfg.slot); }
+function key(d,t,pi){ return d+"|"+t+"|"+pi; }
+
+/* ── 상태 만들기 · 불러오기 ──────────────────────────────── */
+function blank(){
+  return { upd:0, by:"", cfg:JSON.parse(JSON.stringify(DEFAULTS)), staff:[], grid:{} };
+}
+function normalize(o){
+  const s = Object.assign(blank(), o||{});
+  s.cfg = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), s.cfg||{});
+  if(!Array.isArray(s.cfg.posts) || !s.cfg.posts.length) s.cfg.posts = DEFAULTS.posts.slice();
+  // need 길이를 posts 에 맞춘다. 자리를 늘렸는데 need 가 짧으면 조용히 빠진다
+  s.cfg.need = s.cfg.posts.map((_,i)=> s.cfg.need && s.cfg.need[i]!=null ? s.cfg.need[i] : 0);
+  if(!Array.isArray(s.cfg.days) || !s.cfg.days.length) s.cfg.days = JSON.parse(JSON.stringify(DEFAULTS.days));
+  s.staff = Array.isArray(s.staff) ? s.staff : [];
+  s.grid  = (s.grid && typeof s.grid==="object") ? s.grid : {};
+  return s;
+}
+function loadLocal(){
+  try{ const raw=localStorage.getItem(LS_KEY); if(raw) return normalize(JSON.parse(raw)); }
+  catch(e){ console.warn("local load:", e); }
+  return null;
+}
+function saveLocal(){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }
+  catch(e){ console.warn("local save:", e); }
+}
+
+/* 저장 — 로컬 먼저, 서버는 뒤. 서버 실패는 절대 조용히 넘기지 않는다.
+   교대표는 "저장 안 된 걸 모른 채 다음 날 아침에 발견"하는 사고가 난다. */
+let saveTimer=null;
+function save(who){
+  S.upd = Date.now();
+  if(who) S.by = who;
+  saveLocal();
+  renderSyncChip();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(pushRemote, 600);
+}
+function pushRemote(){
+  if(!window.FB || !window.FB.on) return;
+  const snapshot = JSON.parse(JSON.stringify(S));
+  window.FB.save(snapshot).then(()=>{
+    if(lastErr){ lastErr=null; renderBody(); }
+  }).catch(e=>{
+    lastErr = e && e.code ? e.code : String(e);
+    console.warn("서버 저장 실패:", lastErr);
+    renderBody();
+  });
+}
+
+/* ── 사람 찾기 ───────────────────────────────────────────── */
+function byId(id){ return S.staff.find(s=>s.id===id) || null; }
+function nameOf(id){ const s=byId(id); return s ? s.name : ""; }
+function activeStaff(){ return S.staff.filter(s=>!s.hide); }
+function availOn(d){ return activeStaff().filter(s=>(s.days||[]).indexOf(d)>=0); }
+
+function workingAt(d,t,id){
+  return S.cfg.posts.some((_,pi)=> S.grid[key(d,t,pi)]===id );
+}
+function postAt(d,t,id){
+  for(let pi=0; pi<S.cfg.posts.length; pi++)
+    if(S.grid[key(d,t,pi)]===id) return S.cfg.posts[pi];
+  return null;
+}
+function headsAt(d,t){
+  const set=new Set();
+  S.cfg.posts.forEach((_,pi)=>{ const v=S.grid[key(d,t,pi)]; if(v) set.add(v); });
+  return set.size;
+}
+function hoursOf(id){
+  let n=0;
+  S.cfg.days.forEach(day=> slotsOf(day).forEach(t=>{ if(workingAt(day.d,t,id)) n++; }));
+  return n*S.cfg.slot/60;
+}
+
+/* ── 자동 배치 ───────────────────────────────────────────
+   정답을 내려는 것이 아니다. 빈 격자를 안 보게 해 주는 용도다.
+   짜 놓고 사람이 고친다.
+     · 한 자리에 maxRun 칸까지 이어서 세운다 (자꾸 바꾸면 매번 다시 배운다)
+     · 근무 시간이 적은 사람부터 넣는다
+     · 방금까지 서 있던 사람보다 쉰 사람을 먼저 넣는다                */
+function runBefore(d, ts, ti, id){
+  let n=0;
+  for(let i=ti-1; i>=0; i--){ if(workingAt(d, ts[i], id)) n++; else break; }
+  return n;
+}
+function autoFill(){
+  const cfg=S.cfg;
+  cfg.days.forEach(day=>{
+    const ts = slotsOf(day), pool = availOn(day.d);
+    if(!pool.length) return;
+    ts.forEach((t,ti)=>{
+      const used=new Set();
+      cfg.posts.forEach((_,pi)=>{ const v=S.grid[key(day.d,t,pi)]; if(v) used.add(v); });
+
+      cfg.posts.forEach((_,pi)=>{
+        if(!cfg.need[pi]) return;
+        const k = key(day.d,t,pi);
+        if(S.grid[k]) return;                       // 손으로 넣어 둔 칸은 건드리지 않는다
+
+        const cand = pool.filter(s=>!used.has(s.id));
+        if(!cand.length) return;
+        const minH = Math.min.apply(null, cand.map(s=>hoursOf(s.id)));
+
+        // ① 앞 칸 사람을 이어서 — 단 그 사람이 이미 많이 섰으면 넘긴다.
+        //    이 조건이 없으면 2칸짜리 덩어리가 통째로 몰려서
+        //    같은 조건인데 근무가 몇 시간씩 벌어진다.
+        let pick=null;
+        if(ti>0){
+          const prev = S.grid[key(day.d, ts[ti-1], pi)];
+          if(prev && !used.has(prev) && runBefore(day.d,ts,ti,prev) < cfg.maxRun
+             && pool.some(s=>s.id===prev)
+             && hoursOf(prev) <= minH + cfg.slot/60) pick = prev;
+        }
+        // ② 아니면 적게 선 사람 · 쉰 사람부터
+        if(!pick){
+          const rested = cand.filter(s=>runBefore(day.d,ts,ti,s.id) < cfg.maxRun);
+          const from = rested.length ? rested : cand;
+          from.sort((a,b)=>{
+            const ha=hoursOf(a.id), hb=hoursOf(b.id);
+            if(ha!==hb) return ha-hb;
+            return runBefore(day.d,ts,ti,a.id) - runBefore(day.d,ts,ti,b.id);
+          });
+          pick = from[0].id;
+        }
+        S.grid[k] = pick;
+        used.add(pick);
+      });
+    });
+  });
+  balancePass();
+}
+
+/* 고르게 펴기 — 2시간씩 묶어 세우다 보면 덩어리가 몰린다.
+   6칸을 10명이 나누면 한 사람당 3칸인데, 3은 홀수라 2칸 덩어리로는 딱 안 나뉜다.
+   그래서 많이 선 사람 칸을 적게 선 사람에게 하나씩 넘긴다.
+   이어서 세우는 것보다 고르게 나누는 쪽이 중요하다. */
+function balancePass(){
+  const cfg=S.cfg;
+  for(let round=0; round<400; round++){
+    let moved=false;
+    cfg.days.forEach(day=>{
+      const ts=slotsOf(day), pool=availOn(day.d);
+      if(pool.length<2) return;
+      const cnt={}; pool.forEach(s=>cnt[s.id]=0);
+      ts.forEach(t=>cfg.posts.forEach((_,pi)=>{
+        const v=S.grid[key(day.d,t,pi)]; if(cnt[v]!=null) cnt[v]++; }));
+      const sorted=pool.slice().sort((a,b)=>cnt[a.id]-cnt[b.id]);
+      const light=sorted[0], heavy=sorted[sorted.length-1];
+      if(cnt[heavy.id]-cnt[light.id] < 2) return;
+      for(const t of ts){
+        if(workingAt(day.d,t,light.id)) continue;
+        for(let pi=0; pi<cfg.posts.length; pi++){
+          if(S.grid[key(day.d,t,pi)]===heavy.id){
+            S.grid[key(day.d,t,pi)]=light.id; moved=true; return;
+          }
+        }
+      }
+    });
+    if(!moved) break;
+  }
+}
+
+/* ── 경고 ────────────────────────────────────────────────── */
+function warnings(){
+  const bad=[], amber=[], cfg=S.cfg;
+  cfg.days.forEach(day=>{
+    slotsOf(day).forEach(t=>{
+      const seen={};
+      cfg.posts.forEach((p,pi)=>{
+        const v = S.grid[key(day.d,t,pi)];
+        if(v){
+          if(seen[v]) bad.push(`${day.label} ${slotLabel(t)} · <b>${escapeHtml(nameOf(v))}</b> 이(가) 두 자리에 겹칩니다`);
+          seen[v]=1;
+        }else if(cfg.need[pi]){
+          bad.push(`${day.label} ${slotLabel(t)} · <b>${escapeHtml(p)}</b> 자리가 비어 있습니다`);
+        }
+      });
+      const h = headsAt(day.d,t);
+      if(h < cfg.minHeads)
+        amber.push(`${day.label} ${slotLabel(t)} · <b>${h}명</b>뿐입니다 (최소 ${cfg.minHeads}명)`);
+    });
+    // 연달아 너무 오래 선 사람
+    const ts=slotsOf(day);
+    activeStaff().forEach(s=>{
+      let run=0, worst=0;
+      ts.forEach(t=>{ if(workingAt(day.d,t,s.id)){ run++; worst=Math.max(worst,run); } else run=0; });
+      if(worst > cfg.maxRun)
+        amber.push(`${day.label} · <b>${escapeHtml(s.name)}</b> 이(가) ${worst}칸(${worst*cfg.slot/60}시간) 연달아 섭니다`);
+    });
+  });
+  // 한 번도 안 들어간 사람
+  activeStaff().forEach(s=>{
+    if(hoursOf(s.id)===0 && (s.days||[]).length)
+      amber.push(`<b>${escapeHtml(s.name)}</b> 이(가) 교대표에 한 번도 안 들어갔습니다`);
+  });
+  return {bad, amber};
+}
+
+/* ══════════════════════════════════════════════════════════
+   그리기
+   ══════════════════════════════════════════════════════════ */
+function app(){ return document.getElementById("app"); }
+
+function renderSyncChip(){
+  const el = document.getElementById("sync");
+  if(!el) return;
+  if(lastErr){ el.className="chip bad"; el.textContent="저장 실패"; return; }
+  if(!window.FB || !window.FB.on){ el.className="chip"; el.textContent="로컬 전용"; return; }
+  el.className = syncState==="live" ? "chip ok" : "chip";
+  el.textContent = syncState==="live" ? "동기화됨" : "오프라인";
+}
+let syncState="cache";
+
+function errBox(){
+  if(!lastErr) return "";
+  return `<div class="bigerr"><b>서버에 저장되지 않았습니다.</b>
+    (${escapeHtml(lastErr)}) 이 기기에는 남아 있지만 <b>다른 사람 화면에는 안 보입니다.</b><br>
+    ${lastErr==="permission-denied"
+      ? `Firestore 규칙에 <b>staff</b> 가 빠져 있습니다. <code>firebase.rules</code> 를 콘솔에 올리고 <b>게시</b>를 누르세요.`
+      : `연결을 확인한 뒤 아무 칸이나 다시 고쳐 보세요.`}</div>`;
+}
+
+function renderBody(){
+  renderSyncChip();
+  if(tab==="grid")   return renderGrid();
+  if(tab==="mine")   return renderMine();
+  if(tab==="roster") return renderRoster();
+  if(tab==="cfg")    return renderCfg();
+}
+
+/* ── 교대표 ──────────────────────────────────────────────── */
+function nowSlot(day){
+  const n=new Date(), m=n.getHours()*60+n.getMinutes();
+  return slotsOf(day).find(t=> m>=t2m(t) && m < t2m(t)+S.cfg.slot ) || null;
+}
+
+function renderGrid(){
+  const cfg=S.cfg;
+  if(!activeStaff().length){
+    app().innerHTML = errBox() + `<div class="empty">
+      <p>아직 명단이 비어 있습니다.</p>
+      <p><b>명단</b> 탭에서 이름을 넣어 주세요. 한꺼번에 붙여 넣을 수 있습니다.</p></div>`;
+    return;
+  }
+  const day = cfg.days.find(d=>d.d===dayTab) || cfg.days[0];
+  dayTab = day.d;
+  const ts = slotsOf(day), now = nowSlot(day);
+  const w = warnings();
+
+  const dayBtns = cfg.days.map(d=>
+    `<button class="btn sm${d.d===dayTab?" pri":""}" data-day="${d.d}">${escapeHtml(d.label)}
+      <span style="opacity:.75">${d.start}~${d.end}</span></button>`).join("");
+
+  const head = `<tr><th class="t">시각</th>${
+    cfg.posts.map((p,i)=>`<th>${escapeHtml(p)}${cfg.need[i]?"":'<br><span style="font-weight:400;opacity:.65">선택</span>'}</th>`).join("")
+  }<th class="t">인원</th></tr>`;
+
+  const body = ts.map(t=>{
+    const seen={};
+    cfg.posts.forEach((_,pi)=>{ const v=S.grid[key(day.d,t,pi)]; if(v) seen[v]=(seen[v]||0)+1; });
+    const cells = cfg.posts.map((p,pi)=>{
+      const k=key(day.d,t,pi), v=S.grid[k]||"";
+      const dup = v && seen[v]>1;
+      const empty = !v && cfg.need[pi];
+      const cls = (dup?"dup ":"") + (empty?"empty ":"");
+      if(!editable){
+        return `<td class="${cls}ro${v?"":" none"}">${v?escapeHtml(nameOf(v)):"—"}</td>`;
+      }
+      const opts = [`<option value="">—</option>`].concat(
+        availOn(day.d).map(s=>
+          `<option value="${escapeHtml(s.id)}"${s.id===v?" selected":""}>${escapeHtml(s.name)}</option>`)
+      );
+      // 나오는 날이 아닌데 이미 들어가 있으면 그 사람도 목록에 남겨 둔다 (조용히 지워지면 안 된다)
+      if(v && !availOn(day.d).some(s=>s.id===v))
+        opts.push(`<option value="${escapeHtml(v)}" selected>${escapeHtml(nameOf(v))} (불참일)</option>`);
+      return `<td class="${cls}"><select data-k="${k}">${opts.join("")}</select></td>`;
+    }).join("");
+    const h = headsAt(day.d,t);
+    const miss = cfg.posts.some((_,pi)=> cfg.need[pi] && !S.grid[key(day.d,t,pi)] );
+    const ccls = miss ? "c bad" : (h < cfg.minHeads ? "c low" : "c");
+    return `<tr${t===now?' class="now"':""}><td class="t">${slotLabel(t)}</td>${cells}<td class="${ccls}">${h}</td></tr>`;
+  }).join("");
+
+  app().innerHTML = errBox() + `
+    <div class="row" style="margin-bottom:12px">${dayBtns}</div>
+    ${editable ? `<div class="row" style="margin-bottom:12px">
+      <button class="btn pri" id="btnAuto">빈칸 자동 채우기</button>
+      <button class="btn" id="btnPrint">인쇄</button>
+      <button class="btn danger sm" id="btnClearDay">${escapeHtml(day.label)} 비우기</button>
+    </div>` : `<div class="row" style="margin-bottom:12px">
+      <button class="btn" id="btnPrint">인쇄</button>
+      <span class="note">편집은 노트북에서 합니다. <a href="#" id="forceEdit">그래도 편집</a></span>
+    </div>`}
+    <div class="gwrap"><table class="grid"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    <div class="legend">
+      <span><i style="background:var(--alert-bg);border-color:var(--alert)"></i>필수 자리가 빔</span>
+      <span><i style="background:var(--amber-bg);border-color:var(--amber)"></i>인원 ${cfg.minHeads}명 미만</span>
+      <span><i style="background:var(--trace-bg);border-color:var(--trace)"></i>지금 시각</span>
+    </div>
+    <p class="note">${S.upd ? `마지막 수정 ${S.by?escapeHtml(S.by)+" · ":""}${when(S.upd)}` : ""}</p>
+    ${w.bad.length||w.amber.length ? `<h2>확인할 것</h2>
+      ${w.bad.slice(0,14).map(x=>`<div class="warn">${x}</div>`).join("")}
+      ${w.amber.slice(0,14).map(x=>`<div class="warn amber">${x}</div>`).join("")}
+      ${(w.bad.length>14||w.amber.length>14)?`<p class="note">…그 밖에도 더 있습니다.</p>`:""}`
+      : `<h2>확인할 것</h2><p class="note">빈 자리도 겹침도 없습니다.</p>`}
+  `;
+
+  cfg.days.forEach(d=>{
+    const b=app().querySelector(`[data-day="${d.d}"]`);
+    if(b) b.onclick=()=>{ dayTab=d.d; renderBody(); };
+  });
+  app().querySelectorAll("select[data-k]").forEach(sel=>{
+    sel.onchange=()=>{
+      const k=sel.dataset.k;
+      if(sel.value) S.grid[k]=sel.value; else delete S.grid[k];
+      save(meName());
+      renderGrid();                       // 인원·경고가 같이 바뀌므로 다시 그린다
+      const again=app().querySelector(`select[data-k="${k}"]`);
+      if(again) again.focus();            // 방금 고친 칸에 초점을 돌려준다
+    };
+  });
+  const ba=document.getElementById("btnAuto");
+  if(ba) ba.onclick=()=>{ autoFill(); save(meName()); renderBody(); toast("빈칸을 채웠습니다"); };
+  const bc=document.getElementById("btnClearDay");
+  if(bc) bc.onclick=()=>{
+    if(!confirm(`${day.label} 배치를 전부 비웁니다. 계속할까요?`)) return;
+    slotsOf(day).forEach(t=> cfg.posts.forEach((_,pi)=> delete S.grid[key(day.d,t,pi)] ));
+    save(meName()); renderBody(); toast(day.label+"을 비웠습니다");
+  };
+  const bp=document.getElementById("btnPrint");
+  if(bp) bp.onclick=printSheet;
+  const fe=document.getElementById("forceEdit");
+  if(fe) fe.onclick=(e)=>{ e.preventDefault(); editable=true; renderBody(); };
+}
+
+function when(ms){
+  const s=Math.round((Date.now()-ms)/1000);
+  if(s<60) return "방금";
+  if(s<3600) return Math.round(s/60)+"분 전";
+  const d=new Date(ms);
+  return `${d.getMonth()+1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
+/* ── 내 시간 ─────────────────────────────────────────────── */
+function meName(){ const s=byId(meId()); return s?s.name:""; }
+function meId(){ try{ return localStorage.getItem(LS_ME)||""; }catch(e){ return ""; } }
+function setMe(id){ try{ localStorage.setItem(LS_ME,id); }catch(e){} }
+
+function renderMine(){
+  const list = activeStaff();
+  if(!list.length){
+    app().innerHTML = `<div class="empty"><p>아직 명단이 비어 있습니다.</p></div>`;
+    return;
+  }
+  const id = meId();
+  const picker = `<div class="card"><label class="note" for="selMe">이름을 고르면 기억해 둡니다.</label><br>
+    <select id="selMe" style="margin-top:8px;min-width:200px">
+      <option value="">— 이름 고르기 —</option>
+      ${list.map(s=>`<option value="${escapeHtml(s.id)}"${s.id===id?" selected":""}>${escapeHtml(s.name)}</option>`).join("")}
+    </select></div>`;
+
+  if(!id || !byId(id)){ app().innerHTML = picker; bindMe(); return; }
+
+  const me = byId(id), now = new Date(), nowM = now.getHours()*60+now.getMinutes();
+  let blocks = "";
+  S.cfg.days.forEach(day=>{
+    const ts = slotsOf(day);
+    const rows = ts.map(t=>{
+      const p = postAt(day.d, t, id);
+      const on = (t2m(t) <= nowM && nowM < t2m(t)+S.cfg.slot);
+      if(!p) return on ? `<div class="shift on"><span class="tm">${slotLabel(t)}</span>
+        <span class="ps">휴식</span><span class="tag">지금</span></div>` : "";
+      return `<div class="shift${on?" on":""}"><span class="tm">${slotLabel(t)}</span>
+        <span class="ps">${escapeHtml(p)}</span>${on?'<span class="tag">지금</span>':""}</div>`;
+    }).join("");
+    const h = ts.filter(t=>workingAt(day.d,t,id)).length * S.cfg.slot/60;
+    blocks += `<h2>${escapeHtml(day.label)} <span style="font-weight:400;color:var(--ink3);font-size:14px">
+      ${(me.days||[]).indexOf(day.d)>=0 ? h+"시간" : "불참"}</span></h2>
+      <div class="card">${rows || `<p class="note" style="margin:0">배치된 시간이 없습니다.</p>`}</div>`;
+  });
+
+  app().innerHTML = `
+    <div class="mine"><div class="who">${escapeHtml(me.name)}</div>
+      <div class="sum">오늘까지 모두 ${hoursOf(id)}시간</div></div>
+    ${blocks}${picker}`;
+  bindMe();
+}
+function bindMe(){
+  const sel=document.getElementById("selMe");
+  if(sel) sel.onchange=()=>{ setMe(sel.value); renderBody(); };
+}
+
+/* ── 명단 ────────────────────────────────────────────────── */
+function day1Label(){ return (S.cfg.days[0]&&S.cfg.days[0].label)||"1일차"; }
+function newId(){
+  let n=1; while(S.staff.some(s=>s.id==="s"+n)) n++;
+  return "s"+n;
+}
+function renderRoster(){
+  const rows = S.staff.map(s=>{
+    const h=hoursOf(s.id);
+    return `<tr class="${s.hide?"hid":""}">
+      <td>${escapeHtml(s.name)}</td>
+      <td><span class="daybox">${S.cfg.days.map(d=>
+        `<label><input type="checkbox" data-day="${d.d}" data-id="${escapeHtml(s.id)}"
+          ${(s.days||[]).indexOf(d.d)>=0?"checked":""}>${escapeHtml(d.label)}</label>`).join("")}</span></td>
+      <td class="n">${h}시간</td>
+      <td style="text-align:right"><button class="btn sm${s.hide?"":" danger"}" data-hide="${escapeHtml(s.id)}">
+        ${s.hide?"되돌리기":"숨기기"}</button></td>
+    </tr>`;
+  }).join("");
+
+  // 근무 시간은 "나오는 날"이 같은 사람끼리만 견준다.
+  // 이틀 다 나오는 사람이 하루만 나오는 사람보다 많이 서는 건 당연하다.
+  const act = activeStaff();
+  const groups = {};
+  act.forEach(s=>{ const k=(s.days||[]).slice().sort().join(",")||"없음";
+    (groups[k]=groups[k]||[]).push(s); });
+  let gap=0, gapLabel="";
+  Object.keys(groups).forEach(k=>{
+    const hs=groups[k].map(s=>hoursOf(s.id));
+    const d=Math.max.apply(null,hs)-Math.min.apply(null,hs);
+    if(d>gap){ gap=d;
+      gapLabel = (k==="없음" ? "나오는 날이 없는 사람"
+        : S.cfg.days.filter(x=>k.split(",").indexOf(String(x.d))>=0).map(x=>x.label).join("·")+" 나오는 사람");
+    }
+  });
+  const hrs = act.map(s=>hoursOf(s.id));
+  const lo = hrs.length?Math.min(...hrs):0, hi = hrs.length?Math.max(...hrs):0;
+
+  app().innerHTML = errBox() + `
+    <h2>한꺼번에 넣기</h2>
+    <div class="card">
+      <p class="note" style="margin-top:0">이름을 줄바꿈으로 붙여 넣으세요. 20명도 한 번에 들어갑니다.</p>
+      <textarea id="bulk" placeholder="김하은&#10;박도윤&#10;이서연&#10;…"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn pri" id="btnBulk">명단에 넣기</button>
+        <span class="note">이미 있는 이름은 건너뜁니다.</span>
+      </div>
+    </div>
+
+    <h2>명단 <span style="font-weight:400;color:var(--ink3);font-size:14px">${act.length}명</span></h2>
+    ${act.length ? `<p class="note">근무 시간 ${lo}~${hi}시간.
+      ${gap>1 ? `<b style="color:var(--amber)">${escapeHtml(gapLabel)}끼리 ${gap}시간 벌어져 있습니다.</b>
+                  ${escapeHtml(day1Label())} 배치를 비우고 자동 채우기를 다시 돌려 보세요.`
+              : Object.keys(groups).length>1
+                ? "나오는 날이 같은 사람끼리는 고르게 퍼져 있습니다."
+                : "고르게 퍼져 있습니다."}</p>` : ""}
+    <div class="card" style="padding:4px 16px">
+      ${S.staff.length ? `<table class="list">
+        <thead><tr><th>이름</th><th>나오는 날</th><th class="n">근무</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>`
+      : `<p class="note" style="padding:14px 0">아직 아무도 없습니다.</p>`}
+    </div>
+    <div class="row" style="margin-bottom:14px">
+      <input type="text" id="oneName" placeholder="한 명만 추가" style="flex:1;min-width:160px">
+      <button class="btn" id="btnOne">추가</button>
+    </div>
+    <p class="note">지우는 대신 <b>숨깁니다.</b> 되돌릴 수 있고, 이미 짜 놓은 교대표가 깨지지 않습니다.
+      이름 말고 연락처·학번은 받지 않습니다 — 이 주소는 누구나 열 수 있습니다.</p>
+  `;
+
+  app().querySelectorAll("input[type=checkbox][data-id]").forEach(cb=>{
+    cb.onchange=()=>{
+      const s=byId(cb.dataset.id); if(!s) return;
+      const d=+cb.dataset.day;
+      s.days = s.days || [];
+      if(cb.checked){ if(s.days.indexOf(d)<0) s.days.push(d); }
+      else s.days = s.days.filter(x=>x!==d);
+      s.days.sort();
+      save(meName()); renderBody();
+    };
+  });
+  app().querySelectorAll("button[data-hide]").forEach(b=>{
+    b.onclick=()=>{
+      const s=byId(b.dataset.hide); if(!s) return;
+      s.hide = !s.hide;
+      save(meName()); renderBody();
+      toast(s.hide ? `${s.name} 을(를) 숨겼습니다` : `${s.name} 을(를) 되돌렸습니다`);
+    };
+  });
+  document.getElementById("btnBulk").onclick=()=>{
+    const raw=document.getElementById("bulk").value;
+    const names=raw.split(/[\n,]/).map(x=>x.trim()).filter(Boolean);
+    let added=0;
+    names.forEach(n=>{
+      if(S.staff.some(s=>s.name===n)) return;
+      S.staff.push({ id:newId(), name:n, days:S.cfg.days.map(d=>d.d), hide:false });
+      added++;
+    });
+    if(added){ save(meName()); renderBody(); toast(added+"명을 넣었습니다"); }
+    else toast("새로 넣을 이름이 없습니다");
+  };
+  document.getElementById("btnOne").onclick=()=>{
+    const el=document.getElementById("oneName"), n=el.value.trim();
+    if(!n) return;
+    if(S.staff.some(s=>s.name===n)){ toast("이미 있는 이름입니다"); return; }
+    S.staff.push({ id:newId(), name:n, days:S.cfg.days.map(d=>d.d), hide:false });
+    el.value=""; save(meName()); renderBody();
+  };
+}
+
+/* ── 설정 ────────────────────────────────────────────────── */
+function renderCfg(){
+  const c=S.cfg;
+  app().innerHTML = errBox() + `
+    <h2>운영 시간</h2>
+    <div class="card">
+      ${c.days.map((d,i)=>`<div class="row" style="margin-bottom:10px">
+        <input type="text" value="${escapeHtml(d.label)}" data-dl="${i}" style="width:110px">
+        <input type="time" value="${d.start}" data-ds="${i}">
+        <span class="note">~</span>
+        <input type="time" value="${d.end}" data-de="${i}">
+        <span class="note">${slotsOf(d).length}칸</span>
+      </div>`).join("")}
+      <div class="row" style="margin-top:12px">
+        <label class="note">한 칸 길이</label>
+        <select id="slotSel">
+          <option value="60"${c.slot===60?" selected":""}>1시간</option>
+          <option value="30"${c.slot===30?" selected":""}>30분</option>
+        </select>
+        <label class="note" style="margin-left:12px">동시 최소 인원</label>
+        <input type="number" id="minH" value="${c.minHeads}" min="1" max="10" style="width:76px">
+        <label class="note" style="margin-left:12px">연속 한도(칸)</label>
+        <input type="number" id="maxR" value="${c.maxRun}" min="1" max="12" style="width:76px">
+      </div>
+      <p class="note">30분으로 바꾸면 칸이 두 배가 됩니다. 실제로 30분마다 인수인계는 잘 안 지켜집니다.</p>
+    </div>
+
+    <h2>자리</h2>
+    <div class="card">
+      ${c.posts.map((p,i)=>`<div class="row" style="margin-bottom:8px">
+        <input type="text" value="${escapeHtml(p)}" data-pn="${i}" style="flex:1;min-width:150px">
+        <label class="daybox"><label><input type="checkbox" data-pr="${i}" ${c.need[i]?"checked":""}>꼭 있어야 함</label></label>
+      </div>`).join("")}
+      <p class="note"><b>유동</b>은 필수가 아닙니다. 점심 교대나 잠깐 자리를 비우는 걸 이 자리로 흡수합니다.</p>
+    </div>
+
+    <h2>백업</h2>
+    <div class="card">
+      <div class="row">
+        <button class="btn" id="btnOut">내려받기 (JSON)</button>
+        <button class="btn" id="btnIn">가져오기</button>
+        <input type="file" id="fileIn" accept="application/json,.json" class="hide">
+      </div>
+      <p class="note">가져오면 지금 내용을 <b>전부 덮어씁니다.</b></p>
+    </div>
+
+    <h2>알아 둘 것</h2>
+    <div class="card">
+      <p class="note" style="margin-top:0">· 저장은 <b>이 기기에 먼저</b>, 그다음 서버입니다. 서버가 죽어도 남습니다.</p>
+      <p class="note">· 여럿이 동시에 고치면 <b>마지막에 고친 쪽이 이깁니다.</b> 문서 하나를 통째로 덮기 때문입니다. 편집은 한 기기에서 하세요.</p>
+      <p class="note">· 이 주소는 누구나 열 수 있습니다. 이름 말고 다른 정보는 넣지 마세요.</p>
+    </div>
+  `;
+
+  app().querySelectorAll("[data-dl]").forEach(el=>el.onchange=()=>{ c.days[+el.dataset.dl].label=el.value.trim()||"일차"; save(meName()); renderBody(); });
+  app().querySelectorAll("[data-ds]").forEach(el=>el.onchange=()=>{ c.days[+el.dataset.ds].start=el.value; save(meName()); renderBody(); });
+  app().querySelectorAll("[data-de]").forEach(el=>el.onchange=()=>{ c.days[+el.dataset.de].end=el.value; save(meName()); renderBody(); });
+  app().querySelectorAll("[data-pn]").forEach(el=>el.onchange=()=>{ c.posts[+el.dataset.pn]=el.value.trim()||"자리"; save(meName()); renderBody(); });
+  app().querySelectorAll("[data-pr]").forEach(el=>el.onchange=()=>{ c.need[+el.dataset.pr]=el.checked?1:0; save(meName()); renderBody(); });
+  document.getElementById("slotSel").onchange=(e)=>{
+    if(!confirm("칸 길이를 바꾸면 이미 짜 놓은 배치가 맞지 않게 됩니다. 계속할까요?")) { renderBody(); return; }
+    c.slot=+e.target.value; save(meName()); renderBody();
+  };
+  document.getElementById("minH").onchange=(e)=>{ c.minHeads=Math.max(1,+e.target.value||3); save(meName()); renderBody(); };
+  document.getElementById("maxR").onchange=(e)=>{ c.maxRun=Math.max(1,+e.target.value||2); save(meName()); renderBody(); };
+
+  document.getElementById("btnOut").onclick=()=>{
+    const b=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
+    const u=URL.createObjectURL(b), a=document.createElement("a");
+    a.href=u; a.download="교대표_백업.json"; document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(u); a.remove();},400);
+  };
+  const fi=document.getElementById("fileIn");
+  document.getElementById("btnIn").onclick=()=>fi.click();
+  fi.onchange=()=>{
+    const f=fi.files&&fi.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const o=normalize(JSON.parse(rd.result));
+        if(!confirm("지금 내용을 전부 덮어씁니다. 계속할까요?")) return;
+        S=o; save(meName()); renderBody(); toast("가져왔습니다");
+      }catch(e){ alert("읽을 수 없는 파일입니다."); }
+      fi.value="";
+    };
+    rd.readAsText(f);
+  };
+}
+
+/* ── 인쇄 ────────────────────────────────────────────────
+   샌드박스 iframe 안에서는 window.print() 가 조용히 무시된다.
+   그래서 index.html 과 같이 새 창을 띄워 거기서 인쇄한다.       */
+function printSheet(){
+  const c=S.cfg;
+  const tables = c.days.map(day=>{
+    const ts=slotsOf(day);
+    const head=`<tr><th>시각</th>${c.posts.map(p=>`<th>${escapeHtml(p)}</th>`).join("")}<th>인원</th></tr>`;
+    const body=ts.map(t=>`<tr><td class="t">${slotLabel(t)}</td>${
+      c.posts.map((_,pi)=>{ const v=S.grid[key(day.d,t,pi)];
+        return `<td>${v?escapeHtml(nameOf(v)):"—"}</td>`; }).join("")
+    }<td class="c">${headsAt(day.d,t)}</td></tr>`).join("");
+    return `<h2>${escapeHtml(day.label)} <small>${day.start}~${day.end}</small></h2>
+      <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  }).join("");
+
+  const html=`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
+    <title>운영 교대표</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      @page{ size:A4 portrait; margin:12mm }
+      body{font-family:"Noto Sans KR",sans-serif;color:#000;margin:0;font-size:10pt}
+      h1{font-size:15pt;margin:0 0 2mm;border-bottom:2pt solid #000;padding-bottom:2mm}
+      .sub{font-size:8.5pt;color:#444;margin-bottom:5mm}
+      h2{font-size:11.5pt;margin:5mm 0 2mm}
+      h2 small{font-weight:400;color:#555;font-size:9pt}
+      table{border-collapse:collapse;width:100%;margin-bottom:3mm}
+      th,td{border:.6pt solid #000;padding:1.6mm 1mm;text-align:center;font-size:9pt}
+      th{background:#eee;font-size:8.5pt}
+      td.t{font-weight:600;white-space:nowrap}
+      td.c{font-weight:700;background:#f4f4f4}
+      .foot{margin-top:6mm;font-size:8pt;color:#555;border-top:.6pt solid #999;padding-top:2mm}
+    </style></head><body>
+    <h1>BIO-DATA 탐사대 · 운영 교대표</h1>
+    <div class="sub">${escapeHtml(activeStaff().length)}명 · 자리 ${c.posts.length}개 ·
+      ${S.upd?`마지막 수정 ${escapeHtml(S.by||"")} ${new Date(S.upd).toLocaleString("ko-KR")}`:""}</div>
+    ${tables}
+    <div class="foot">바뀌면 종이가 아니라 화면이 맞습니다. 폰에서 <b>내 시간</b>을 확인하세요.</div>
+    </body></html>`;
+
+  const w=window.open("","_blank");
+  if(!w){ alert("팝업이 막혀 있습니다. 주소창 옆에서 허용해 주세요."); return; }
+  w.document.write(html); w.document.close();
+  w.onload=()=>{ w.focus(); w.print(); };
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 700);
+}
+
+/* ── 토스트 ──────────────────────────────────────────────── */
+let toastTimer=null;
+function toast(msg){
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove("on"), 2000);
+}
+
+/* ── 탭 ──────────────────────────────────────────────────── */
+[["grid","tab-grid"],["mine","tab-mine"],["roster","tab-roster"],["cfg","tab-cfg"]].forEach(([n,id])=>{
+  document.getElementById(id).onclick=()=>{
+    tab=n;
+    document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected","false"));
+    document.getElementById(id).setAttribute("aria-selected","true");
+    renderBody();
+  };
+});
+
+/* ── 시작 ────────────────────────────────────────────────── */
+S = loadLocal() || normalize(null);
+renderBody();
+
+function start(){
+  if(!window.FB || !window.FB.on){ renderSyncChip(); return; }
+  window.FB.watch(
+    remote=>{
+      if(!remote) return;
+      const r = normalize(remote);
+      // 병합 규칙은 index.html 과 같다 — upd 가 최신인 쪽이 이긴다.
+      // 교대표는 문서 하나라 칸 단위로 섞지 않는다. 섞으면 누가 뭘 지웠는지 알 수 없다.
+      if((r.upd||0) > (S.upd||0)){
+        S = r; saveLocal(); renderBody();
+      }
+    },
+    (st,code)=>{
+      syncState = st==="live" ? "live" : "cache";
+      if(st==="error"){ lastErr = code || "unknown"; renderBody(); }
+      else renderSyncChip();
+    }
+  );
+}
+if(window.FB!==undefined) start();
+else window.addEventListener("fb-ready", start, {once:true});
+
+// 화면이 넓어지면 편집을 켠다 (노트북에서 창을 키운 경우)
+window.addEventListener("resize", ()=>{
+  const wide = window.innerWidth>=900;
+  if(wide && !editable){ editable=true; if(tab==="grid") renderBody(); }
+});
+</script>
+</body>
+</html>
