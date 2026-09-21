@@ -80,6 +80,9 @@ table.grid td.c{width:64px;font-weight:700;font-family:"IBM Plex Mono",monospace
 table.grid td.c.low{color:var(--amber);background:var(--amber-bg)}
 table.grid td.c.bad{color:var(--alert);background:var(--alert-bg)}
 table.grid tr.now td{outline:2px solid var(--trace);outline-offset:-2px}
+table.grid tr.bh td{background:var(--trace-bg);text-align:left;padding:7px 11px;
+  font-weight:700;font-size:13px;letter-spacing:-.01em}
+table.grid tr.bh td span{font-weight:400;color:var(--ink2);font-family:"IBM Plex Mono",monospace;margin-left:6px}
 table.grid select{width:100%;min-height:42px;border:0;border-radius:0;background:transparent;
   font-size:13.5px;text-align:center;text-align-last:center;padding:4px 2px;cursor:pointer}
 table.grid select:focus{outline:2px solid var(--trace);outline-offset:-2px}
@@ -224,10 +227,41 @@ const DEFAULTS = {
   posts: ["접수·문진","혈압·심박","악력·EKG","순발력·감각","결과·굿즈","유동"],
   need:  [1,1,1,1,1,0],
   days: [
-    { d:1, label:"1일차", start:"10:00", end:"18:00" },
-    { d:2, label:"2일차", start:"10:00", end:"16:00" }
+    { d:1, label:"1일차", start:"10:00", end:"18:00",
+      blocks:[ {k:"am", b:"오전", start:"10:00", end:"14:00"},
+               {k:"pm", b:"오후", start:"14:00", end:"18:00"} ] },
+    { d:2, label:"2일차", start:"10:00", end:"16:00",
+      blocks:[ {k:"am", b:"오전", start:"10:00", end:"13:00"},
+               {k:"pm", b:"오후", start:"13:00", end:"16:00"} ] }
   ]
 };
+
+/* 덩어리 — 운영은 이 단위로 나눈다.
+   격자는 시간대별로 그대로 두고, 덩어리는 두 군데에 쓴다.
+     ① 명단에서 "언제 나오나" 를 받는 단위 ("1일차 오후만 가능")
+     ② 격자에 구분줄을 넣어 오전·오후를 갈라 보여 준다              */
+function blocksOf(day){
+  return (day.blocks && day.blocks.length) ? day.blocks
+       : [{k:"all", b:"종일", start:day.start, end:day.end}];
+}
+function bKey(d,k){ return d+"|"+k; }
+function blockAt(day,t){
+  const m=t2m(t);
+  return blocksOf(day).find(b=> m>=t2m(b.start) && m<t2m(b.end) ) || null;
+}
+function allBlocks(){
+  const out=[];
+  S.cfg.days.forEach(day=> blocksOf(day).forEach(b=>
+    out.push({ key:bKey(day.d,b.k), day:day, b:b,
+               label:day.label+" "+b.b, span:b.start+"~"+b.end })));
+  return out;
+}
+/* 이 사람이 이 시각에 나올 수 있나 */
+function canWork(st, day, t){
+  const b = blockAt(day,t);
+  if(!b) return false;
+  return (st.ok||[]).indexOf(bKey(day.d,b.k)) >= 0;
+}
 
 let S = null;          // 전체 상태 { upd, by, cfg, staff[], grid{} }
 let tab = "grid";
@@ -257,7 +291,23 @@ function normalize(o){
   // need 길이를 posts 에 맞춘다. 자리를 늘렸는데 need 가 짧으면 조용히 빠진다
   s.cfg.need = s.cfg.posts.map((_,i)=> s.cfg.need && s.cfg.need[i]!=null ? s.cfg.need[i] : 0);
   if(!Array.isArray(s.cfg.days) || !s.cfg.days.length) s.cfg.days = JSON.parse(JSON.stringify(DEFAULTS.days));
+  // 덩어리가 없는 날은 하루를 반으로 갈라 오전·오후를 만든다
+  s.cfg.days.forEach(day=>{
+    if(Array.isArray(day.blocks) && day.blocks.length) return;
+    const mid = m2t(Math.round((t2m(day.start)+t2m(day.end))/120)*60);
+    day.blocks = [ {k:"am", b:"오전", start:day.start, end:mid},
+                   {k:"pm", b:"오후", start:mid,       end:day.end} ];
+  });
   s.staff = Array.isArray(s.staff) ? s.staff : [];
+  // 예전 판은 "나오는 날"(days)만 있었다. 그 날의 덩어리를 전부 켜 준다
+  s.staff.forEach(st=>{
+    if(Array.isArray(st.ok)) return;
+    st.ok = [];
+    (st.days||[]).forEach(d=>{
+      const day = s.cfg.days.find(x=>x.d===d);
+      if(day) day.blocks.forEach(b=> st.ok.push(d+"|"+b.k) );
+    });
+  });
   s.grid  = (s.grid && typeof s.grid==="object") ? s.grid : {};
   return s;
 }
@@ -298,7 +348,8 @@ function pushRemote(){
 function byId(id){ return S.staff.find(s=>s.id===id) || null; }
 function nameOf(id){ const s=byId(id); return s ? s.name : ""; }
 function activeStaff(){ return S.staff.filter(s=>!s.hide); }
-function availOn(d){ return activeStaff().filter(s=>(s.days||[]).indexOf(d)>=0); }
+function availAt(day,t){ return activeStaff().filter(s=>canWork(s,day,t)); }
+function availDay(day){ return activeStaff().filter(s=> slotsOf(day).some(t=>canWork(s,day,t)) ); }
 
 function workingAt(d,t,id){
   return S.cfg.posts.some((_,pi)=> S.grid[key(d,t,pi)]===id );
@@ -333,9 +384,10 @@ function runBefore(d, ts, ti, id){
 function autoFill(){
   const cfg=S.cfg;
   cfg.days.forEach(day=>{
-    const ts = slotsOf(day), pool = availOn(day.d);
-    if(!pool.length) return;
+    const ts = slotsOf(day);
     ts.forEach((t,ti)=>{
+      const pool = availAt(day,t);        // 이 시각에 나올 수 있는 사람만
+      if(!pool.length) return;
       const used=new Set();
       cfg.posts.forEach((_,pi)=>{ const v=S.grid[key(day.d,t,pi)]; if(v) used.add(v); });
 
@@ -347,6 +399,7 @@ function autoFill(){
         const cand = pool.filter(s=>!used.has(s.id));
         if(!cand.length) return;
         const minH = Math.min.apply(null, cand.map(s=>hoursOf(s.id)));
+        const poolIds = pool.map(s=>s.id);
 
         // ① 앞 칸 사람을 이어서 — 단 그 사람이 이미 많이 섰으면 넘긴다.
         //    이 조건이 없으면 2칸짜리 덩어리가 통째로 몰려서
@@ -355,7 +408,7 @@ function autoFill(){
         if(ti>0){
           const prev = S.grid[key(day.d, ts[ti-1], pi)];
           if(prev && !used.has(prev) && runBefore(day.d,ts,ti,prev) < cfg.maxRun
-             && pool.some(s=>s.id===prev)
+             && poolIds.indexOf(prev)>=0
              && hoursOf(prev) <= minH + cfg.slot/60) pick = prev;
         }
         // ② 아니면 적게 선 사람 · 쉰 사람부터
@@ -374,7 +427,29 @@ function autoFill(){
       });
     });
   });
+  fillSpare();
   balancePass();
+}
+
+/* 한 번도 안 들어간 사람을 선택 자리(유동)에 넣는다.
+   20명인데 필수 자리가 5개뿐이면 남는 사람이 반드시 생긴다.
+   격자에 이름이 없으면 그 사람은 자기가 언제 오는지 알 수가 없다. */
+function fillSpare(){
+  const cfg=S.cfg;
+  cfg.days.forEach(day=>{
+    slotsOf(day).forEach(t=>{
+      const used=new Set();
+      cfg.posts.forEach((_,pi)=>{ const v=S.grid[key(day.d,t,pi)]; if(v) used.add(v); });
+      cfg.posts.forEach((_,pi)=>{
+        if(cfg.need[pi]) return;                       // 필수 자리는 앞에서 이미 채웠다
+        const k=key(day.d,t,pi);
+        if(S.grid[k]) return;
+        const spare = availAt(day,t).filter(s=>!used.has(s.id) && hoursOf(s.id)===0);
+        if(!spare.length) return;
+        S.grid[k]=spare[0].id; used.add(spare[0].id);
+      });
+    });
+  });
 }
 
 /* 고르게 펴기 — 2시간씩 묶어 세우다 보면 덩어리가 몰린다.
@@ -383,22 +458,34 @@ function autoFill(){
    이어서 세우는 것보다 고르게 나누는 쪽이 중요하다. */
 function balancePass(){
   const cfg=S.cfg;
-  for(let round=0; round<400; round++){
+  for(let round=0; round<600; round++){
     let moved=false;
     cfg.days.forEach(day=>{
-      const ts=slotsOf(day), pool=availOn(day.d);
+      const ts=slotsOf(day), pool=availDay(day);
       if(pool.length<2) return;
       const cnt={}; pool.forEach(s=>cnt[s.id]=0);
       ts.forEach(t=>cfg.posts.forEach((_,pi)=>{
         const v=S.grid[key(day.d,t,pi)]; if(cnt[v]!=null) cnt[v]++; }));
-      const sorted=pool.slice().sort((a,b)=>cnt[a.id]-cnt[b.id]);
-      const light=sorted[0], heavy=sorted[sorted.length-1];
-      if(cnt[heavy.id]-cnt[light.id] < 2) return;
-      for(const t of ts){
-        if(workingAt(day.d,t,light.id)) continue;
-        for(let pi=0; pi<cfg.posts.length; pi++){
-          if(S.grid[key(day.d,t,pi)]===heavy.id){
-            S.grid[key(day.d,t,pi)]=light.id; moved=true; return;
+      const asc = pool.slice().sort((a,b)=>cnt[a.id]-cnt[b.id]);
+      // 가장 적게 선 사람부터, 가장 많이 선 사람 칸을 하나 넘겨받는다.
+      // 한 쌍이 안 되면 다음 쌍으로 — 덩어리가 안 맞아 못 옮기는 경우가 있다
+      for(let li=0; li<asc.length && !moved; li++){
+        const light=asc[li];
+        for(let hi=asc.length-1; hi>li && !moved; hi--){
+          const heavy=asc[hi];
+          if(cnt[heavy.id]-cnt[light.id] < 2) break;
+          for(const t of ts){
+            if(!canWork(light,day,t)) continue;         // 안 나오는 덩어리로는 못 옮긴다
+            if(workingAt(day.d,t,light.id)) continue;
+            let done=false;
+            for(let pi=0; pi<cfg.posts.length; pi++){
+              if(S.grid[key(day.d,t,pi)]===heavy.id){
+                S.grid[key(day.d,t,pi)]=light.id;
+                cnt[heavy.id]--; cnt[light.id]++;
+                moved=true; done=true; break;
+              }
+            }
+            if(done) break;
           }
         }
       }
@@ -425,6 +512,8 @@ function warnings(){
       const h = headsAt(day.d,t);
       if(h < cfg.minHeads)
         amber.push(`${day.label} ${slotLabel(t)} · <b>${h}명</b>뿐입니다 (최소 ${cfg.minHeads}명)`);
+      if(!availAt(day,t).length)
+        bad.push(`${day.label} ${slotLabel(t)} · <b>나올 수 있는 사람이 없습니다.</b> 명단에서 이 덩어리를 켜 주세요`);
     });
     // 연달아 너무 오래 선 사람
     const ts=slotsOf(day);
@@ -435,10 +524,13 @@ function warnings(){
         amber.push(`${day.label} · <b>${escapeHtml(s.name)}</b> 이(가) ${worst}칸(${worst*cfg.slot/60}시간) 연달아 섭니다`);
     });
   });
-  // 한 번도 안 들어간 사람
+  // 한 번도 안 들어간 사람 / 나오는 덩어리를 하나도 안 고른 사람
   activeStaff().forEach(s=>{
-    if(hoursOf(s.id)===0 && (s.days||[]).length)
+    if(!(s.ok||[]).length){
+      amber.push(`<b>${escapeHtml(s.name)}</b> 이(가) 나오는 덩어리를 하나도 안 골랐습니다`);
+    }else if(hoursOf(s.id)===0){
       amber.push(`<b>${escapeHtml(s.name)}</b> 이(가) 교대표에 한 번도 안 들어갔습니다`);
+    }
   });
   return {bad, amber};
 }
@@ -502,7 +594,16 @@ function renderGrid(){
     cfg.posts.map((p,i)=>`<th>${escapeHtml(p)}${cfg.need[i]?"":'<br><span style="font-weight:400;opacity:.65">선택</span>'}</th>`).join("")
   }<th class="t">인원</th></tr>`;
 
+  let lastBlock=null;
   const body = ts.map(t=>{
+    const bk = blockAt(day,t);
+    let head="";
+    if(bk && (!lastBlock || lastBlock.k!==bk.k)){
+      lastBlock=bk;
+      head=`<tr class="bh"><td colspan="${cfg.posts.length+2}">${escapeHtml(bk.b)}
+        <span>${bk.start}~${bk.end} · 나올 수 있는 사람 ${
+          activeStaff().filter(x=>(x.ok||[]).indexOf(bKey(day.d,bk.k))>=0).length}명</span></td></tr>`;
+    }
     const seen={};
     cfg.posts.forEach((_,pi)=>{ const v=S.grid[key(day.d,t,pi)]; if(v) seen[v]=(seen[v]||0)+1; });
     const cells = cfg.posts.map((p,pi)=>{
@@ -513,19 +614,21 @@ function renderGrid(){
       if(!editable){
         return `<td class="${cls}ro${v?"":" none"}">${v?escapeHtml(nameOf(v)):"—"}</td>`;
       }
+      const here = availAt(day,t);
       const opts = [`<option value="">—</option>`].concat(
-        availOn(day.d).map(s=>
+        here.map(s=>
           `<option value="${escapeHtml(s.id)}"${s.id===v?" selected":""}>${escapeHtml(s.name)}</option>`)
       );
-      // 나오는 날이 아닌데 이미 들어가 있으면 그 사람도 목록에 남겨 둔다 (조용히 지워지면 안 된다)
-      if(v && !availOn(day.d).some(s=>s.id===v))
-        opts.push(`<option value="${escapeHtml(v)}" selected>${escapeHtml(nameOf(v))} (불참일)</option>`);
+      // 안 나오는 덩어리인데 이미 들어가 있으면 그 사람도 목록에 남겨 둔다.
+      // 조용히 지워지면 누가 빠졌는지 알 수 없다
+      if(v && !here.some(s=>s.id===v))
+        opts.push(`<option value="${escapeHtml(v)}" selected>${escapeHtml(nameOf(v))} (안 나오는 때)</option>`);
       return `<td class="${cls}"><select data-k="${k}">${opts.join("")}</select></td>`;
     }).join("");
     const h = headsAt(day.d,t);
     const miss = cfg.posts.some((_,pi)=> cfg.need[pi] && !S.grid[key(day.d,t,pi)] );
     const ccls = miss ? "c bad" : (h < cfg.minHeads ? "c low" : "c");
-    return `<tr${t===now?' class="now"':""}><td class="t">${slotLabel(t)}</td>${cells}<td class="${ccls}">${h}</td></tr>`;
+    return head + `<tr${t===now?' class="now"':""}><td class="t">${slotLabel(t)}</td>${cells}<td class="${ccls}">${h}</td></tr>`;
   }).join("");
 
   app().innerHTML = errBox() + `
@@ -617,12 +720,17 @@ function renderMine(){
       const on = (t2m(t) <= nowM && nowM < t2m(t)+S.cfg.slot);
       if(!p) return on ? `<div class="shift on"><span class="tm">${slotLabel(t)}</span>
         <span class="ps">휴식</span><span class="tag">지금</span></div>` : "";
+      const bk = blockAt(day, t);
       return `<div class="shift${on?" on":""}"><span class="tm">${slotLabel(t)}</span>
-        <span class="ps">${escapeHtml(p)}</span>${on?'<span class="tag">지금</span>':""}</div>`;
+        <span class="ps">${escapeHtml(p)}${bk?` <span style="color:var(--ink3);font-size:13.5px">${escapeHtml(bk.b)}</span>`:""}</span>${on?'<span class="tag">지금</span>':""}</div>`;
     }).join("");
     const h = ts.filter(t=>workingAt(day.d,t,id)).length * S.cfg.slot/60;
+    const mineBlocks = blocksOf(day).filter(b=>(me.ok||[]).indexOf(bKey(day.d,b.k))>=0);
+    const tagline = mineBlocks.length
+      ? mineBlocks.map(b=>escapeHtml(b.b)).join("·") + (h?" · "+h+"시간":" · 배치 없음")
+      : "안 나오는 날";
     blocks += `<h2>${escapeHtml(day.label)} <span style="font-weight:400;color:var(--ink3);font-size:14px">
-      ${(me.days||[]).indexOf(day.d)>=0 ? h+"시간" : "불참"}</span></h2>
+      ${tagline}</span></h2>
       <div class="card">${rows || `<p class="note" style="margin:0">배치된 시간이 없습니다.</p>`}</div>`;
   });
 
@@ -644,16 +752,18 @@ function newId(){
   return "s"+n;
 }
 function renderRoster(){
+  const blks = allBlocks();
   const rows = S.staff.map(s=>{
     const h=hoursOf(s.id);
     return `<tr class="${s.hide?"hid":""}">
       <td>${escapeHtml(s.name)}</td>
-      <td><span class="daybox">${S.cfg.days.map(d=>
-        `<label><input type="checkbox" data-day="${d.d}" data-id="${escapeHtml(s.id)}"
-          ${(s.days||[]).indexOf(d.d)>=0?"checked":""}>${escapeHtml(d.label)}</label>`).join("")}</span></td>
+      <td><span class="daybox">${blks.map(b=>
+        `<label><input type="checkbox" data-bk="${escapeHtml(b.key)}" data-id="${escapeHtml(s.id)}"
+          ${(s.ok||[]).indexOf(b.key)>=0?"checked":""}>${escapeHtml(b.label)}</label>`).join("")}</span></td>
       <td class="n">${h}시간</td>
-      <td style="text-align:right"><button class="btn sm${s.hide?"":" danger"}" data-hide="${escapeHtml(s.id)}">
-        ${s.hide?"되돌리기":"숨기기"}</button></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn sm" data-hide="${escapeHtml(s.id)}">${s.hide?"되돌리기":"숨기기"}</button>
+        <button class="btn sm danger" data-del="${escapeHtml(s.id)}">지우기</button></td>
     </tr>`;
   }).join("");
 
@@ -661,15 +771,16 @@ function renderRoster(){
   // 이틀 다 나오는 사람이 하루만 나오는 사람보다 많이 서는 건 당연하다.
   const act = activeStaff();
   const groups = {};
-  act.forEach(s=>{ const k=(s.days||[]).slice().sort().join(",")||"없음";
+  act.forEach(s=>{ const k=(s.ok||[]).slice().sort().join(",")||"없음";
     (groups[k]=groups[k]||[]).push(s); });
   let gap=0, gapLabel="";
   Object.keys(groups).forEach(k=>{
     const hs=groups[k].map(s=>hoursOf(s.id));
     const d=Math.max.apply(null,hs)-Math.min.apply(null,hs);
     if(d>gap){ gap=d;
-      gapLabel = (k==="없음" ? "나오는 날이 없는 사람"
-        : S.cfg.days.filter(x=>k.split(",").indexOf(String(x.d))>=0).map(x=>x.label).join("·")+" 나오는 사람");
+      const ks=k.split(",");
+      gapLabel = (k==="없음" ? "나오는 덩어리를 안 고른 사람"
+        : allBlocks().filter(b=>ks.indexOf(b.key)>=0).map(b=>b.label).join("·")+" 나오는 사람");
     }
   });
   const hrs = act.map(s=>hoursOf(s.id));
@@ -687,11 +798,18 @@ function renderRoster(){
     </div>
 
     <h2>명단 <span style="font-weight:400;color:var(--ink3);font-size:14px">${act.length}명</span></h2>
+    <p class="note">운영은 덩어리 ${blks.length}개로 나눕니다 —
+      ${blks.map(b=>`<b>${escapeHtml(b.label)}</b> ${b.span}`).join(" · ")}.
+      각자 <b>나올 수 있는 덩어리</b>만 켜 주세요. 자동 채우기가 이것만 지킵니다.</p>
+    <div class="row" style="margin-bottom:10px">
+      ${blks.map(b=>`<button class="btn sm" data-all="${escapeHtml(b.key)}">${escapeHtml(b.label)} 전원</button>`).join("")}
+      <button class="btn sm" data-all="__none__">전부 끄기</button>
+    </div>
     ${act.length ? `<p class="note">근무 시간 ${lo}~${hi}시간.
       ${gap>1 ? `<b style="color:var(--amber)">${escapeHtml(gapLabel)}끼리 ${gap}시간 벌어져 있습니다.</b>
                   ${escapeHtml(day1Label())} 배치를 비우고 자동 채우기를 다시 돌려 보세요.`
               : Object.keys(groups).length>1
-                ? "나오는 날이 같은 사람끼리는 고르게 퍼져 있습니다."
+                ? "나오는 덩어리가 같은 사람끼리는 고르게 퍼져 있습니다."
                 : "고르게 퍼져 있습니다."}</p>` : ""}
     <div class="card" style="padding:4px 16px">
       ${S.staff.length ? `<table class="list">
@@ -703,19 +821,42 @@ function renderRoster(){
       <input type="text" id="oneName" placeholder="한 명만 추가" style="flex:1;min-width:160px">
       <button class="btn" id="btnOne">추가</button>
     </div>
-    <p class="note">지우는 대신 <b>숨깁니다.</b> 되돌릴 수 있고, 이미 짜 놓은 교대표가 깨지지 않습니다.
+    <p class="note"><b>숨기기</b>는 교대표를 그대로 둔 채 목록에서만 빼고, 되돌릴 수 있습니다.
+      <b>지우기</b>는 그 사람이 들어간 칸까지 비우고 되돌릴 수 없습니다. 보통은 숨기기로 충분합니다.<br>
       이름 말고 연락처·학번은 받지 않습니다 — 이 주소는 누구나 열 수 있습니다.</p>
   `;
 
   app().querySelectorAll("input[type=checkbox][data-id]").forEach(cb=>{
     cb.onchange=()=>{
       const s=byId(cb.dataset.id); if(!s) return;
-      const d=+cb.dataset.day;
-      s.days = s.days || [];
-      if(cb.checked){ if(s.days.indexOf(d)<0) s.days.push(d); }
-      else s.days = s.days.filter(x=>x!==d);
-      s.days.sort();
+      const bk=cb.dataset.bk;
+      s.ok = s.ok || [];
+      if(cb.checked){ if(s.ok.indexOf(bk)<0) s.ok.push(bk); }
+      else s.ok = s.ok.filter(x=>x!==bk);
       save(meName()); renderBody();
+    };
+  });
+  app().querySelectorAll("button[data-all]").forEach(b=>{
+    b.onclick=()=>{
+      const bk=b.dataset.all;
+      if(bk==="__none__") activeStaff().forEach(s=>s.ok=[]);
+      else activeStaff().forEach(s=>{ s.ok=s.ok||[]; if(s.ok.indexOf(bk)<0) s.ok.push(bk); });
+      save(meName()); renderBody();
+    };
+  });
+  app().querySelectorAll("button[data-del]").forEach(b=>{
+    b.onclick=()=>{
+      const s=byId(b.dataset.del); if(!s) return;
+      const h=hoursOf(s.id);
+      // 숨기기와 달리 되돌릴 수 없다. 그래서 몇 시간이 비는지 먼저 알려 준다
+      const msg = s.name + " 을(를) 명단에서 지웁니다."
+        + (h ? "\n교대표에 들어간 " + h + "시간도 같이 비워집니다." : "")
+        + "\n되돌릴 수 없습니다. 계속할까요?";
+      if(!confirm(msg)) return;
+      Object.keys(S.grid).forEach(k=>{ if(S.grid[k]===s.id) delete S.grid[k]; });
+      S.staff = S.staff.filter(x=>x.id!==s.id);
+      if(meId()===s.id) setMe("");
+      save(meName()); renderBody(); toast(s.name+" 을(를) 지웠습니다");
     };
   });
   app().querySelectorAll("button[data-hide]").forEach(b=>{
@@ -732,7 +873,7 @@ function renderRoster(){
     let added=0;
     names.forEach(n=>{
       if(S.staff.some(s=>s.name===n)) return;
-      S.staff.push({ id:newId(), name:n, days:S.cfg.days.map(d=>d.d), hide:false });
+      S.staff.push({ id:newId(), name:n, ok:allBlocks().map(b=>b.key), hide:false });
       added++;
     });
     if(added){ save(meName()); renderBody(); toast(added+"명을 넣었습니다"); }
@@ -742,7 +883,7 @@ function renderRoster(){
     const el=document.getElementById("oneName"), n=el.value.trim();
     if(!n) return;
     if(S.staff.some(s=>s.name===n)){ toast("이미 있는 이름입니다"); return; }
-    S.staff.push({ id:newId(), name:n, days:S.cfg.days.map(d=>d.d), hide:false });
+    S.staff.push({ id:newId(), name:n, ok:allBlocks().map(b=>b.key), hide:false });
     el.value=""; save(meName()); renderBody();
   };
 }
@@ -753,12 +894,25 @@ function renderCfg(){
   app().innerHTML = errBox() + `
     <h2>운영 시간</h2>
     <div class="card">
-      ${c.days.map((d,i)=>`<div class="row" style="margin-bottom:10px">
-        <input type="text" value="${escapeHtml(d.label)}" data-dl="${i}" style="width:110px">
-        <input type="time" value="${d.start}" data-ds="${i}">
-        <span class="note">~</span>
-        <input type="time" value="${d.end}" data-de="${i}">
-        <span class="note">${slotsOf(d).length}칸</span>
+      ${c.days.map((d,i)=>`<div style="margin-bottom:16px">
+        <div class="row" style="margin-bottom:8px">
+          <input type="text" value="${escapeHtml(d.label)}" data-dl="${i}" style="width:104px">
+          <input type="time" value="${d.start}" data-ds="${i}">
+          <span class="note">~</span>
+          <input type="time" value="${d.end}" data-de="${i}">
+          <span class="note">격자 ${slotsOf(d).length}칸</span>
+        </div>
+        <div style="padding-left:14px;border-left:2px solid var(--line)">
+          ${blocksOf(d).map((b,bi)=>`<div class="row" style="margin-bottom:6px">
+            <input type="text" value="${escapeHtml(b.b)}" data-bn="${i}.${bi}" style="width:92px">
+            <input type="time" value="${b.start}" data-bs="${i}.${bi}">
+            <span class="note">~</span>
+            <input type="time" value="${b.end}" data-be="${i}.${bi}">
+            <span class="note">${(t2m(b.end)-t2m(b.start))/60}시간</span>
+            ${blocksOf(d).length>1?`<button class="btn sm danger" data-bx="${i}.${bi}">지우기</button>`:""}
+          </div>`).join("")}
+          <button class="btn sm" data-badd="${i}">덩어리 추가</button>
+        </div>
       </div>`).join("")}
       <div class="row" style="margin-top:12px">
         <label class="note">한 칸 길이</label>
@@ -771,7 +925,9 @@ function renderCfg(){
         <label class="note" style="margin-left:12px">연속 한도(칸)</label>
         <input type="number" id="maxR" value="${c.maxRun}" min="1" max="12" style="width:76px">
       </div>
-      <p class="note">30분으로 바꾸면 칸이 두 배가 됩니다. 실제로 30분마다 인수인계는 잘 안 지켜집니다.</p>
+      <p class="note"><b>덩어리</b>는 운영을 나누는 단위입니다. 격자는 시간대별로 그대로 두고,
+        명단에서 "언제 나오나"를 이 단위로 받습니다. 격자에도 구분줄이 들어갑니다.</p>
+      <p class="note">칸 길이를 30분으로 바꾸면 격자가 두 배가 됩니다. 실제로 30분마다 인수인계는 잘 안 지켜집니다.</p>
     </div>
 
     <h2>자리</h2>
@@ -805,6 +961,27 @@ function renderCfg(){
   app().querySelectorAll("[data-ds]").forEach(el=>el.onchange=()=>{ c.days[+el.dataset.ds].start=el.value; save(meName()); renderBody(); });
   app().querySelectorAll("[data-de]").forEach(el=>el.onchange=()=>{ c.days[+el.dataset.de].end=el.value; save(meName()); renderBody(); });
   app().querySelectorAll("[data-pn]").forEach(el=>el.onchange=()=>{ c.posts[+el.dataset.pn]=el.value.trim()||"자리"; save(meName()); renderBody(); });
+  const at=(v)=>{ const p=String(v).split("."); return blocksOf(c.days[+p[0]])[+p[1]]; };
+  app().querySelectorAll("[data-bn]").forEach(el=>el.onchange=()=>{ at(el.dataset.bn).b=el.value.trim()||"덩어리"; save(meName()); renderBody(); });
+  app().querySelectorAll("[data-bs]").forEach(el=>el.onchange=()=>{ at(el.dataset.bs).start=el.value; save(meName()); renderBody(); });
+  app().querySelectorAll("[data-be]").forEach(el=>el.onchange=()=>{ at(el.dataset.be).end=el.value; save(meName()); renderBody(); });
+  app().querySelectorAll("[data-bx]").forEach(el=>el.onclick=()=>{
+    const p=el.dataset.bx.split("."), day=c.days[+p[0]], b=day.blocks[+p[1]];
+    if(!confirm(day.label+" "+b.b+" 덩어리를 지웁니다. 이 덩어리만 나올 수 있던 사람은 배치에서 빠집니다.")) return;
+    const gone=day.d+"|"+b.k;
+    day.blocks.splice(+p[1],1);
+    S.staff.forEach(st=>{ st.ok=(st.ok||[]).filter(x=>x!==gone); });
+    save(meName()); renderBody();
+  });
+  app().querySelectorAll("[data-badd]").forEach(el=>el.onclick=()=>{
+    const day=c.days[+el.dataset.badd];
+    day.blocks = day.blocks || [];
+    let n=1; while(day.blocks.some(b=>b.k==="x"+n)) n++;
+    const last=day.blocks[day.blocks.length-1];
+    day.blocks.push({ k:"x"+n, b:"덩어리"+(day.blocks.length+1),
+      start:(last?last.end:day.start), end:day.end });
+    save(meName()); renderBody();
+  });
   app().querySelectorAll("[data-pr]").forEach(el=>el.onchange=()=>{ c.need[+el.dataset.pr]=el.checked?1:0; save(meName()); renderBody(); });
   document.getElementById("slotSel").onchange=(e)=>{
     if(!confirm("칸 길이를 바꾸면 이미 짜 놓은 배치가 맞지 않게 됩니다. 계속할까요?")) { renderBody(); return; }
@@ -844,10 +1021,18 @@ function printSheet(){
   const tables = c.days.map(day=>{
     const ts=slotsOf(day);
     const head=`<tr><th>시각</th>${c.posts.map(p=>`<th>${escapeHtml(p)}</th>`).join("")}<th>인원</th></tr>`;
-    const body=ts.map(t=>`<tr><td class="t">${slotLabel(t)}</td>${
-      c.posts.map((_,pi)=>{ const v=S.grid[key(day.d,t,pi)];
-        return `<td>${v?escapeHtml(nameOf(v)):"—"}</td>`; }).join("")
-    }<td class="c">${headsAt(day.d,t)}</td></tr>`).join("");
+    let lb=null;
+    const body=ts.map(t=>{
+      const bk=blockAt(day,t);
+      let head="";
+      if(bk && (!lb || lb.k!==bk.k)){ lb=bk;
+        head=`<tr class="bh"><td colspan="${c.posts.length+2}">${escapeHtml(bk.b)} · ${bk.start}~${bk.end}</td></tr>`;
+      }
+      return head + `<tr><td class="t">${slotLabel(t)}</td>${
+        c.posts.map((_,pi)=>{ const v=S.grid[key(day.d,t,pi)];
+          return `<td>${v?escapeHtml(nameOf(v)):"—"}</td>`; }).join("")
+      }<td class="c">${headsAt(day.d,t)}</td></tr>`;
+    }).join("");
     return `<h2>${escapeHtml(day.label)} <small>${day.start}~${day.end}</small></h2>
       <table><thead>${head}</thead><tbody>${body}</tbody></table>`;
   }).join("");
@@ -867,6 +1052,7 @@ function printSheet(){
       th{background:#eee;font-size:8.5pt}
       td.t{font-weight:600;white-space:nowrap}
       td.c{font-weight:700;background:#f4f4f4}
+      tr.bh td{background:#ddd;text-align:left;font-weight:700;font-size:8.5pt}
       .foot{margin-top:6mm;font-size:8pt;color:#555;border-top:.6pt solid #999;padding-top:2mm}
     </style></head><body>
     <h1>BIO-DATA 탐사대 · 운영 교대표</h1>
