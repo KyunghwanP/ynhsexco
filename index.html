@@ -1466,9 +1466,9 @@ const MEAS=[
    담당 항목만 띄워야 오입력이 줄고 입력이 빨라진다. */
 const STATIONS=[
   {k:"all",  n:"전체",        g:null},
-  {k:"vital",n:"혈압·심박",   g:["bp","hr"]},
-  {k:"grip", n:"악력·EKG",    g:["grip","ekg"]},
-  {k:"react",n:"순발력·감각", g:["react","eye"]}
+  {k:"vital",n:"혈압·EKG",    g:["bp","hr","ekg"]},
+  {k:"grip", n:"악력·우세눈", g:["grip","eye"]},
+  {k:"react",n:"순발력",      g:["react"]}
 ];
 function stationGroups(){
   const st=STATIONS.find(x=>x.k===(cfg.station||"all"))||STATIONS[0];
