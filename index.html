@@ -1595,6 +1595,7 @@ function renderMeasure(){
   const r=target, m=r.m||{};
   let h=stationChips()+`<div class="found">
     <div><b>${escapeHtml(r.name)}</b> <span class="meta">${r.age}세 · ${escapeHtml(r.sex)} · ${r.id}</span></div>
+    <button class="btn sm" id="btnRelabel" style="flex:0 0 auto">번호표</button>
     <button class="btn sm" id="btnSheet" style="flex:0 0 auto">결과지</button>
   </div>`;
 
@@ -1686,6 +1687,7 @@ document.getElementById("measureBody").addEventListener("click",e=>{
     delete target.m.ekgSec; delete target.m.ekgBpm;
     renderMeasure(); return;
   }
+  if(e.target.id==="btnRelabel" && target){ printLabel(target); return; }
   if(e.target.id==="btnSheet" && target){ harvestFields(); printSheet(target); return; }
   if(e.target.id==="btnSaveM") saveMeasure();
 });
@@ -2117,7 +2119,11 @@ function boardScreens(){
        const hi=Math.max(g.l,g.r), lo=Math.min(g.l,g.r);
        return lo>0?{x:Math.round((hi-lo)/lo*100),y:0,id:r.id}:null;
      }).filter(Boolean),
-     draw:d=>bHist(d.map(p=>p.x),5,"주손이 더 센 정도 (%)","사람 수")}
+     draw:d=>bHist(d.map(p=>p.x),5,"주손이 더 센 정도 (%)","사람 수")},
+    {q:`더 센 손과 <em>우세눈</em>은 같은 쪽일까?`,
+     cols:["접수번호","더 센 손","우세눈"],
+     data:eyeHand,
+     draw:bMatch}
   ];
   const B=[
     {q:`지금까지 <em>${recs.length}명</em>이 참여했어요`, tiles:true,
@@ -2170,6 +2176,47 @@ function statTiles(){
     ${t(done.length,"측정 완료")}${t(ekg.length,"심전도 측정")}
     ${ages.length?t(Math.min(...ages)+"~"+Math.max(...ages),"나이 범위 (세)"):""}
     ${fast.length?t(Math.min(...fast),"오늘 가장 빠른 반응 (ms)"):""}</div>`;
+}
+/* 더 센 손과 우세눈 — 답이 비율 하나라 그래프 대신 큰 숫자와 2×2 격자로 그린다.
+   1~2m 떨어져 보는 화면에서는 축과 눈금보다 숫자 하나가 먼저 읽힌다.
+   색은 강조 하나만 쓰고, 어느 칸인지는 행·열 이름이 말한다 — 색만으로 뜻을 전하지 않는다. */
+function eyeHand(){
+  return recs.map(r=>{
+    const g=r.m&&r.m.grip, e=r.m&&r.m.eye;
+    if(!g||g==="skip"||g.l==null||g.r==null) return null;
+    if(e!=="L"&&e!=="R") return null;
+    if(g.l===g.r) return null;              // 좌우가 같으면 더 센 손을 정할 수 없다
+    return {id:r.id, x:g.r>g.l?"오른손":"왼손", y:e==="R"?"오른눈":"왼눈"};
+  }).filter(Boolean);
+}
+function bMatch(d){
+  const n=(h,e)=>d.filter(p=>p.x===h&&p.y===e).length;
+  const same=n("오른손","오른눈")+n("왼손","왼눈");
+  const pct=Math.round(same/d.length*100);
+  const th=t=>`<th style="padding:1vh 1vw;font-size:clamp(13px,1.6vw,23px);
+    font-weight:500;color:var(--ink2);text-align:center">${t}</th>`;
+  const cell=(h,e)=>{
+    const v=n(h,e), on=(h==="오른손")===(e==="오른눈");
+    return `<td style="padding:1.6vh 1.6vw;text-align:center;border:1px solid var(--line);
+      background:${on?"var(--trace-bg)":"transparent"}">
+      <div style="font-size:clamp(26px,4.4vw,60px);font-weight:700;line-height:1;
+        color:${on?"var(--trace)":"var(--ink)"}">${v}</div>
+      <div style="font-size:clamp(11px,1.3vw,18px);color:var(--ink2);margin-top:.45em">${on?"같은 쪽":"다른 쪽"}</div></td>`;
+  };
+  return `<div style="display:flex;gap:5vw;align-items:center;justify-content:center;width:100%;flex-wrap:wrap">
+    <div style="text-align:center">
+      <div style="font-size:clamp(56px,11vw,150px);font-weight:700;color:var(--trace);line-height:1">${pct}%</div>
+      <div style="font-size:clamp(14px,1.9vw,27px);color:var(--ink2);margin-top:.5em">더 센 손과 우세눈이 <b>같은 쪽</b></div>
+      <div style="font-size:clamp(12px,1.4vw,20px);color:var(--ink3);margin-top:.35em">${d.length}명 중 ${same}명</div>
+    </div>
+    <table style="border-collapse:collapse">
+      <thead><tr>${th("")}${th("오른눈")}${th("왼눈")}</tr></thead>
+      <tbody>
+        <tr>${th("오른손")}${cell("오른손","오른눈")}${cell("오른손","왼눈")}</tr>
+        <tr>${th("왼손")}${cell("왼손","오른눈")}${cell("왼손","왼눈")}</tr>
+      </tbody>
+    </table>
+  </div>`;
 }
 function boardTable(sc,d){
   let rows="";
