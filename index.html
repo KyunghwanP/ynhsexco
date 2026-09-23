@@ -1260,6 +1260,32 @@ const EKG_NOTE="P는 심방이 짜는 순간, 가장 뾰족한 QRS는 심실이 
 const EKG_CLEAN_NOTE="전기 콘센트에서 들어오는 60Hz 잡음과 숨쉬면서 생기는 흔들림을 걷어냈습니다. 없는 모양을 만들어 넣지는 않았습니다.";
 
 /* ═══════ 반응속도 환산 ═══════ */
+/* PAPS 학생건강체력평가 악력 평가기준에서 **"보통(3등급)" 구간만** 옮겨 왔다. (kg)
+   나머지 네 등급은 일부러 안 가져왔다 — "아주 낮음" 같은 말이 아이에게 가는
+   순간 8장의 선을 넘는다. 우리는 "이 학년은 보통 이 정도" 까지만 말한다.
+
+   표가 **초4~고3 뿐이다.** 초1~3 과 어른은 없다 — 정작 물어보는 보호자가
+   표 밖이다. 없으면 없다고 화면에 그대로 띄운다. 지어내지 말 것.
+   학년 기준이라 나이로 바꿔 쓴다(초4=10세). 세는나이를 말하는 사람이 있으니
+   한 살 어긋날 수 있다. 참고용으로만 쓰고 기록에는 넣지 않는다. */
+const GRIP_NORM=[
+  {g:"초4", age:10, m:[15.0,18.4], f:[13.5,17.9]},
+  {g:"초5", age:11, m:[17.0,22.9], f:[15.5,18.9]},
+  {g:"초6", age:12, m:[19.0,26.4], f:[19.0,21.9]},
+  {g:"중1", age:13, m:[22.5,29.9], f:[19.0,22.9]},
+  {g:"중2", age:14, m:[28.5,36.9], f:[19.5,25.4]},
+  {g:"중3", age:15, m:[33.0,40.4], f:[19.5,27.4]},
+  {g:"고1", age:16, m:[35.5,42.4], f:[23.0,28.9]},
+  {g:"고2", age:17, m:[39.0,45.9], f:[25.0,29.4]},
+  {g:"고3", age:18, m:[39.0,45.9], f:[25.0,29.4]}
+];
+function gripNorm(age, sex){
+  const row=GRIP_NORM.find(r=>r.age===Number(age));
+  if(!row) return null;
+  const v = sex==="여" ? row.f : row.m;
+  return {grade:row.g, lo:v[0], hi:v[1]};
+}
+
 function cm2ms(cm){
   const d=Number(cm);
   if(!isFinite(d)||d<=0) return null;
@@ -1604,6 +1630,15 @@ function renderMeasure(){
     h+=`<div class="mgroup" data-g="${g.k}">
       <h3><span>${g.n}${g.opt?' <span class="meta" style="font-size:13px;color:var(--ink3)">선택</span>':""}${val&&!skipped?'<span class="done">입력됨</span>':""}</span>
       <button class="skip ${skipped?"on":""}" data-skip="${g.k}">${skipped?"미측정":"건너뛰기"}</button></h3>`;
+    if(g.k==="grip"){
+      // 학생 폰에만 뜨는 참고줄이다. 방문객 화면·결과지에는 안 나간다
+      const nm=gripNorm(r.age, r.sex);
+      h+= nm
+        ? `<div class="hint" style="margin-bottom:7px">참고 — <b>${nm.grade}</b> ${escapeHtml(r.sex)}학생은 보통 <b>${nm.lo}~${nm.hi}kg</b> 나옵니다.
+            <span style="color:var(--ink3)">등급은 말하지 않습니다</span></div>`
+        : `<div class="hint" style="margin-bottom:7px">참고 자료 없음 — 기준표가 <b>초4~고3</b>만 있습니다.
+            <span style="color:var(--ink3)">모르면 모른다고 말합니다</span></div>`;
+    }
     if(g.pick){
       h+=`<div class="opts c2">`;
       g.pick.forEach(([lab,v])=>{
