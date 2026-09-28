@@ -354,12 +354,12 @@ body.board #board{display:flex}
   <div class="note">
     기록은 <b>이 기기</b>와 <b>서버</b> 양쪽에 저장되고, 기기끼리 자동으로 합쳐집니다.
     인터넷이 끊겨도 이 기기에는 계속 쌓이고 연결되면 올라갑니다.
-    다만 <b>태블릿마다 기기 코드를 반드시 다르게</b> 두세요.
-    같은 코드를 쓰면 접수번호가 겹쳐 두 사람의 기록이 하나로 합쳐집니다.
+    접수번호는 <b>모든 기기가 한 줄로</b> 씁니다(A001, A002…). 서버가 하나씩 나눠 주므로
+    두 폰이 동시에 접수해도 겹치지 않습니다.
   </div>
   <div class="q">
-    <label for="devIn">기기 코드</label>
-    <span class="hint" style="margin:-6px 0 10px">접수번호 앞에 붙습니다. 예: A → A001, B → B001</span>
+    <label for="devIn">예비 글자</label>
+    <span class="hint" style="margin:-6px 0 10px">인터넷이 끊겼을 때만 이 글자로 번호를 냅니다(예: B001). <b>기기마다 다르게.</b> A는 못 씁니다</span>
     <input type="text" id="devIn" maxlength="2" autocomplete="off" style="max-width:130px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:22px">
   </div>
   <div class="q">
@@ -420,7 +420,7 @@ body.board #board{display:flex}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         collection, doc, setDoc, onSnapshot }
+         collection, doc, setDoc, onSnapshot, runTransaction }
   from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -440,11 +440,22 @@ try{
   const col = collection(db, "records");
 
   const statsRef = doc(db, "stats", "live");
+  // 접수번호 카운터. 모든 기기가 여기서 번호를 하나씩 받아 가므로
+  // 두 폰이 같은 순간에 접수해도 번호가 겹치지 않는다
+  const seqRef = doc(db, "stats", "seq");
 
   window.FB = {
     on: true,
     save(rec){ return setDoc(doc(col, rec.id), rec, { merge:true }); },
     putStats(o){ return setDoc(statsRef, o); },
+    nextSeq(dev, floor){
+      return runTransaction(db, async tx=>{
+        const s=await tx.get(seqRef);
+        const cur=Math.max((s.exists() && s.data()[dev]) || 0, floor);
+        tx.set(seqRef, {[dev]: cur+1}, {merge:true});
+        return cur+1;
+      });
+    },
     watch(cb, status){
       onSnapshot(col, { includeMetadataChanges: true },
         snap=>{
@@ -468,7 +479,7 @@ window.dispatchEvent(new Event("fb-ready"));
 /* ═══════ 저장소 ═══════ */
 const KEY="biodata.records.v1", CFG="biodata.config.v1";
 const remoteUpd = new Map();   // 서버가 가진 id별 upd. 중복 업로드를 막는다
-let cfg={dev:"A",day:1,autoPrint:true,station:"all"};
+let cfg={dev:"",day:1,autoPrint:true,station:"all"};
 let recs=[];
 
 function loadAll(){
@@ -496,10 +507,32 @@ function stripUndef(o){
 }
 function touch(r){ r.upd=Date.now(); return r; }
 
-function nextNo(){
-  const mine=recs.filter(r=>r.dev===cfg.dev).map(r=>r.seq);
-  const n=(mine.length?Math.max(...mine):0)+1;
-  return {seq:n, id:cfg.dev+String(n).padStart(3,"0")};
+/* 접수번호. 인터넷이 되면 모든 기기가 서버 카운터에서 A001, A002… 를 한 줄로 받는다.
+   각 기기가 "내가 아는 가장 큰 번호 + 1" 을 내면, 두 폰이 같은 순간에 접수할 때
+   같은 번호가 나오고 뒤에 저장한 쪽이 앞사람 기록을 조용히 덮어쓴다.
+   서버에 못 닿으면 이 기기의 예비 글자(cfg.dev)로 낸다. 예비 글자는 기기마다 다르므로
+   끊긴 채 접수해도 겹치지 않는다. 접수를 막지는 않는다 — 막히면 줄이 선다 */
+const SHARED_DEV="A";
+const SPARE_LETTERS="BCDEFGHJKLMNPRSTUVWXYZ";         // I·O·Q 는 숫자와 헷갈려 뺐다
+function maxSeq(dev){ return recs.reduce((m,r)=>r.dev===dev ? Math.max(m,r.seq||0) : m, 0); }
+const idOf=(dev,n)=>dev+String(n).padStart(3,"0");
+function spareNo(){
+  let n=maxSeq(cfg.dev)+1;
+  while(recs.some(r=>r.id===idOf(cfg.dev,n))) n++;
+  return {seq:n, dev:cfg.dev, id:idOf(cfg.dev,n), spare:true};
+}
+async function issueNo(){
+  if(window.FB && window.FB.on && window.FB.nextSeq){
+    try{
+      const n=await Promise.race([
+        window.FB.nextSeq(SHARED_DEV, maxSeq(SHARED_DEV)),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),4000))
+      ]);
+      const id=idOf(SHARED_DEV,n);
+      if(!recs.some(r=>r.id===id)) return {seq:n, dev:SHARED_DEV, id};
+    }catch(e){ console.warn("번호 받기 실패:", e.code||e.message||e); }
+  }
+  return spareNo();
 }
 
 /* 서버에서 온 목록을 로컬과 합친다. upd가 최신인 쪽이 이긴다. */
@@ -1403,16 +1436,25 @@ document.getElementById("btnNext").onclick=()=>{
   else finishIntake();
 };
 
-function finishIntake(){
-  const {seq,id}=nextNo();
+let issuing=false;
+async function finishIntake(){
+  if(issuing) return;                        // 두 번 눌러 번호 두 개 받는 것을 막는다
+  issuing=true;
+  const btn=document.getElementById("btnNext");
+  btn.disabled=true; btn.textContent="번호 받는 중…";
+  let no;
+  try{ no=await issueNo(); }
+  finally{ issuing=false; btn.disabled=false; btn.textContent="다음"; }
+  const {seq,id,dev}=no;
   const rec={
-    id, seq, dev:cfg.dev, day:cfg.day,
+    id, seq, dev, day:cfg.day,
     at:new Date().toISOString(),
     ...draft,
     m:{}                       // 측정값
   };
   recs.push(touch(rec)); saveAll(rec);
   showTicket(rec);
+  if(no.spare) toast(`인터넷이 끊겨 예비 번호 ${id} 로 냈습니다`);
   if(cfg.autoPrint) printLabel(rec);
 }
 
@@ -1524,14 +1566,22 @@ function findRec(raw){
   const key=m?decodeURIComponent(m[1]):t;
   let r=recs.find(x=>x.id.toUpperCase()===key.toUpperCase());
   if(r) return r;
-  if(/^\d+$/.test(key)) r=recs.find(x=>x.dev===cfg.dev&&x.seq===Number(key));
+  if(/^\d+$/.test(key)) r=recs.find(x=>x.dev===SHARED_DEV&&x.seq===Number(key))
+                      || recs.find(x=>x.dev===cfg.dev&&x.seq===Number(key));
   return r||null;
 }
 function doLookup(raw){
   const v=raw!==undefined?raw:document.getElementById("lookNum").value;
   if(!String(v).trim()){ toast("접수번호를 입력하세요"); return; }
   const r=findRec(v);
-  if(!r){ toast("해당 번호를 찾을 수 없습니다"); target=null; renderMeasure(); return; }
+  if(!r){
+    // QR은 읽었는데 이 기기에 그 기록이 아직 안 들어온 경우를 따로 알린다.
+    // 스캐너 탓으로 오해하기 쉽다
+    const m=String(v).match(/[?&]r=([^&#]+)/);
+    toast(m ? `QR은 읽었어요. ${decodeURIComponent(m[1])} 기록이 이 기기에 아직 없습니다`
+            : "해당 번호를 찾을 수 없습니다");
+    target=null; renderMeasure(); return;
+  }
   target=r; document.getElementById("lookNum").value="";
   renderMeasure(); window.scrollTo({top:0,behavior:"instant"});
 }
@@ -1541,33 +1591,83 @@ document.getElementById("lookNum").addEventListener("input",e=>{
   e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"");
 });
 
-/* ═══════ QR 스캐너 ═══════ */
-let camStream=null, rafId=null;
+/* ═══════ QR 스캐너 ═══════
+   번호표 QR은 21mm로 작고 주소가 길어 칸이 촘촘하다(37칸).
+   - 카메라를 높은 해상도로 연다. 기본값(640×480)이면 폰을 바짝 대야 하는데,
+     그 거리에서는 초점이 안 맞는다
+   - 휴대폰이 스스로 QR을 읽을 줄 알면(BarcodeDetector) 그걸 먼저 쓴다
+   - 아니면 jsQR. 가운데 네모를 원래 해상도 그대로 한 번, 화면 전체를 줄여서
+     한 번 번갈아 본다. 전체를 줄이기만 하면 작은 QR의 칸이 뭉개진다 */
+let camStream=null, rafId=null, scanTurn=0, scanDet=null, scanBusy=false, scanT0=0;
+const scanCv=document.createElement("canvas");
+const scanCx=scanCv.getContext("2d",{willReadFrequently:true});
+function scanFrame(src,W,H){
+  let sx=0, sy=0, sw=W, sh=H, dw, dh;
+  if(scanTurn++%2===0){
+    const s=Math.round(Math.min(W,H)*0.7);
+    sw=sh=s; sx=Math.round((W-s)/2); sy=Math.round((H-s)/2);
+    dw=dh=Math.min(s,900);
+  }else{
+    const k=Math.min(1,800/Math.max(W,H));
+    dw=Math.round(W*k); dh=Math.round(H*k);
+  }
+  scanCv.width=dw; scanCv.height=dh;
+  scanCx.drawImage(src,sx,sy,sw,sh,0,0,dw,dh);
+  const img=scanCx.getImageData(0,0,dw,dh);
+  const code=jsQR(img.data,dw,dh,{inversionAttempts:"dontInvert"});
+  return code&&code.data ? code.data : null;
+}
+async function nativeDetector(){
+  try{
+    if(!("BarcodeDetector" in window)) return null;
+    const f=await BarcodeDetector.getSupportedFormats();
+    return f.includes("qr_code") ? new BarcodeDetector({formats:["qr_code"]}) : null;
+  }catch(e){ return null; }
+}
 async function openScan(){
   const el=document.getElementById("scan"), msg=document.getElementById("scanMsg");
   el.classList.add("on"); msg.textContent="카메라를 켜는 중…";
   if(!window.isSecureContext){ msg.textContent="카메라는 https 주소에서만 켜집니다.\n번호를 직접 입력하세요."; return; }
-  try{ camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}}); }
-  catch(err){ msg.textContent="카메라를 열 수 없습니다. 권한을 확인하거나 번호를 직접 입력하세요."; return; }
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({video:{
+      facingMode:{ideal:"environment"}, width:{ideal:1920}, height:{ideal:1080}}});
+  }catch(err){ msg.textContent="카메라를 열 수 없습니다. 권한을 확인하거나 번호를 직접 입력하세요."; return; }
+  // 되는 기기에서만 켜진다. 안 되면 조용히 넘어간다
+  try{
+    const tr=camStream.getVideoTracks()[0];
+    const cap=tr.getCapabilities ? tr.getCapabilities() : {};
+    if(cap.focusMode && cap.focusMode.includes("continuous"))
+      tr.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(()=>{});
+  }catch(e){}
   const v=document.getElementById("scanVid");
   v.srcObject=camStream; await v.play().catch(()=>{});
+  if(!el.classList.contains("on")){ closeScan(); return; }   // 켜지는 사이에 닫았으면
+  scanDet=await nativeDetector();
   msg.textContent="번호표의 QR을 네모 안에 맞춰 주세요";
-  const cv=document.createElement("canvas"), cx=cv.getContext("2d",{willReadFrequently:true});
+  scanT0=performance.now(); scanBusy=false;
+  const found=data=>{
+    closeScan();
+    if(navigator.vibrate) navigator.vibrate(60);
+    doLookup(data);
+  };
   (function tick(){
     if(!el.classList.contains("on")) return;
-    if(v.readyState===v.HAVE_ENOUGH_DATA && v.videoWidth){
-      const w=Math.min(520,v.videoWidth), sc=w/v.videoWidth;
-      cv.width=w; cv.height=Math.round(v.videoHeight*sc);
-      cx.drawImage(v,0,0,cv.width,cv.height);
-      const img=cx.getImageData(0,0,cv.width,cv.height);
-      const code=jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
-      if(code&&code.data){
-        closeScan();
-        if(navigator.vibrate) navigator.vibrate(60);
-        doLookup(code.data); return;
-      }
-    }
     rafId=requestAnimationFrame(tick);
+    if(scanBusy || v.readyState<v.HAVE_ENOUGH_DATA || !v.videoWidth) return;
+    // 한참 못 읽으면 대개 너무 가까이 대서 흐린 것이다
+    if(performance.now()-scanT0>4000)
+      msg.textContent="너무 가까우면 흐려서 못 읽어요. 한 뼘쯤 떨어뜨려 보세요";
+    if(scanDet){
+      scanBusy=true;
+      scanDet.detect(v).then(list=>{
+        scanBusy=false;
+        const hit=list.find(x=>x.rawValue);
+        if(hit && el.classList.contains("on")) found(hit.rawValue);
+      },()=>{ scanBusy=false; scanDet=null; });           // 실패하면 jsQR로 넘어간다
+      return;
+    }
+    const data=scanFrame(v,v.videoWidth,v.videoHeight);
+    if(data) found(data);
   })();
 }
 function closeScan(){
@@ -2333,7 +2433,7 @@ document.getElementById("printOpts").addEventListener("click",e=>{
   const p=e.target.closest("[data-print]"); if(!p) return;
   cfg.autoPrint=p.dataset.print==="1"; saveCfg(); renderAdmin();
 });
-const SAMPLE=()=>({id:cfg.dev+"001",name:"홍길동",age:14,sex:"남",blood:"O",day:cfg.day,at:new Date().toISOString()});
+const SAMPLE=()=>({id:SHARED_DEV+"001",name:"홍길동",age:14,sex:"남",blood:"O",day:cfg.day,at:new Date().toISOString()});
 const SHEET_SAMPLE=()=>({...SAMPLE(), glass:"씀", symp:["두통","눈의 피로"],
   sleep:6, fall:1, wake:2, bfast:1, sweet:2, water:1, exer:1, sit:1, screen:2, m1:2, m2:3, m3:1,
   m:{hr:{bpm:78}, grip:{l:30,r:34}, react:{a:15,b:18,c:16}, reactMs:175, eye:"R", ekg:"Y", bp:{s:118,d:76}}});
@@ -2344,7 +2444,8 @@ document.getElementById("btnTestSheetDl").onclick=()=>downloadSheet(SHEET_SAMPLE
 document.getElementById("devIn").addEventListener("input",e=>{
   const v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"");
   e.target.value=v;
-  if(v){ cfg.dev=v; saveCfg(); document.getElementById("devTag").textContent=v; }
+  if(v===SHARED_DEV){ toast("A는 함께 쓰는 번호라 예비 글자로 못 씁니다"); return; }
+  if(v){ cfg.dev=v; saveCfg(); }
 });
 document.getElementById("dayOpts").addEventListener("click",e=>{
   const d=e.target.closest("[data-day]"); if(!d) return;
@@ -2389,7 +2490,10 @@ function toast(msg){
 
 /* ═══════ 시작 ═══════ */
 loadAll();
-document.getElementById("devTag").textContent=cfg.dev;
+if(!cfg.dev || cfg.dev===SHARED_DEV){
+  cfg.dev=SPARE_LETTERS[Math.floor(Math.random()*SPARE_LETTERS.length)]; saveCfg();
+}
+document.getElementById("devTag").textContent=SHARED_DEV;
 renderStep();
 renderMeasure();
 
