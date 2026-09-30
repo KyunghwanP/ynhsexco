@@ -206,6 +206,7 @@ textarea{width:100%;min-height:96px;padding:12px 14px;background:var(--card);
 .stat b{display:block;font-size:26px;font-weight:600;font-family:"IBM Plex Mono",monospace}
 .stat span{font-size:12.5px;color:var(--ink3)}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+td.pr{white-space:nowrap} td.pr .btn{display:inline-flex;width:auto;min-height:44px;padding:0 12px;font-size:14px;margin:2px 0 2px 4px}
 table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
 th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
 th{font-size:12.5px;color:var(--ink3);font-weight:500;background:var(--card);position:sticky;top:0}
@@ -343,6 +344,8 @@ body.board #board{display:flex}
     <div><b class="mono" id="cEkg">0</b><span>EKG 측정</span></div>
   </div>
   <div class="tools">
+    <input type="search" id="recFind" placeholder="번호나 이름으로 찾기" autocomplete="off" spellcheck="false"
+      style="flex:1 1 200px;min-height:46px;font-size:16px;padding:0 14px;border:1.5px solid var(--line2);border-radius:10px;background:var(--card);color:var(--ink);font-family:inherit">
     <button class="btn sm" id="btnCsv">CSV 내려받기</button>
     <button class="btn sm" id="btnRefresh">새로고침</button>
   </div>
@@ -699,9 +702,9 @@ const SHEET_CSS = `
   .foot .qr{width:23mm;text-align:center;flex:0 0 auto}
   .foot .qr svg{display:block;width:23mm;height:23mm}
   .foot .qr small{font-size:7pt;color:#444;display:block;margin-top:.6mm}
-  .panel{margin-bottom:5mm}
+  .panel{margin-bottom:3.2mm}
   .panel h3{font-size:11pt;margin:0 0 1.2mm;font-weight:700}
-  .panel p{margin:0;font-size:9.5pt;line-height:1.6;color:#111}
+  .panel p{margin:0;font-size:9.5pt;line-height:1.52;color:#111}
   @media screen{
     body{background:#e9e9e9;padding:16px}
     .page{box-shadow:0 2px 14px rgba(0,0,0,.25);margin:0 auto 16px}
@@ -712,9 +715,12 @@ const SHEET_CSS = `
 
 /* 뒷면 — 벽면 패널 5장 (기획서 08 층2·층3).
    초등학생이 읽을 수 있게 짧은 문장으로 쓴다. */
+/* 핵심개념. 주최측이 정해 주면 여기와 staff.html 의 CORE 를 같이 바꾼다.
+   비어 있으면 결과지 문장에서 핵심개념 부분을 뺀다 — 종이에 "○○" 가 찍혀 나가지 않게 */
+const CORE="";
 const PANELS=[
- ["우리는 왜 피를 뽑지 않을까",
-  "진짜 건강검진에서는 피를 뽑아 많은 것을 알아냅니다. 그런데 오늘 우리는 뽑지 않았어요. 바늘을 쓰면 감염 위험이 생기고, 쓰고 난 바늘은 아무 데나 버릴 수 없는 의료폐기물이 됩니다. 무엇보다 피를 뽑는 일은 면허가 있는 사람만 할 수 있어요. 우리는 학생이고, 그 선을 넘지 않기로 했습니다. 그래서 혈액형은 여러분이 알고 있는 것을 그대로 적었습니다."],
+ ["팔에 붙였는데 왜 심장 신호가 잡힐까",
+  "심장은 뛰기 직전에 근육을 따라 전기 신호가 먼저 퍼집니다. 우리 몸은 절반 넘게 물이라 전기가 잘 흘러서, 그 신호가 팔까지 와요. 팔에 붙인 전극 사이의 아주 작은 전압 차이(1mV, 건전지의 1500분의 1)를 시간 순서대로 그린 것이 심전도예요. 우리는 몸에 전기를 넣지 않고 받기만 했어요."],
  ["혈액형으로 성격을 알 수 있을까",
   "A형은 꼼꼼하고 B형은 자유롭다는 말, 많이 들어봤을 거예요. 하지만 여러 나라에서 수십 년 동안 조사해도 혈액형과 성격 사이에는 관계가 나오지 않았습니다. 그런데도 맞는 것처럼 느껴지는 이유가 있어요. 누구에게나 해당되는 말을 들으면 내 얘기 같고(바넘 효과), 맞은 것만 기억에 남기 때문입니다(확증편향). 과학은 '맞는 경우'가 아니라 '틀리는 경우'를 찾아봐야 확인됩니다."],
  ["오늘 잰 숫자는 왜 진단이 아닐까",
@@ -722,7 +728,9 @@ const PANELS=[
  ["'정상 범위'는 누가 정할까",
   "많은 사람을 재서 값을 늘어놓으면 가운데가 두툼한 산 모양이 됩니다. 그 가운데 95%를 묶어 '정상 범위'라고 부르기로 약속한 거예요. 하늘에서 정해준 숫자가 아니라 사람들이 정한 약속입니다. 그래서 범위 밖이어도 건강한 사람이 있고, 범위 안이어도 아픈 사람이 있어요. 나라와 시대에 따라 기준이 바뀌기도 합니다."],
  ["내 몸에서 나온 데이터는 누구 것일까",
-  "심장의 전기 신호, 유전 정보 같은 것을 생체 데이터라고 합니다. 비밀번호는 바꿀 수 있지만 심전도와 유전자는 바꿀 수 없어요. 한 번 새어 나가면 되돌릴 방법이 없습니다. 오늘 우리가 받은 것은 이름(별명도 가능), 나이, 성별, 혈액형, 문진 답과 측정값입니다. 번호표의 QR로 본인 결과를 볼 수 있고, 순위를 계산할 때는 이름 없이 숫자만 씁니다. 축전이 끝나면 저장해 둔 기록은 잠급니다."]
+  "심장의 전기 신호, 유전 정보 같은 것을 생체 데이터라고 합니다. 비밀번호는 바꿀 수 있지만 심전도와 유전자는 바꿀 수 없어요. 한 번 새어 나가면 되돌릴 방법이 없습니다. 오늘 우리가 받은 것은 이름(별명도 가능), 나이, 성별, 혈액형, 문진 답과 측정값입니다. 번호표의 QR로 본인 결과를 볼 수 있고, 순위를 계산할 때는 이름 없이 숫자만 씁니다. 축전이 끝나면 저장해 둔 기록은 잠급니다."],
+ ["집에 가서 해 볼 것",
+  `① 오늘 무엇을 알아보고 싶었나요? ② 결과가 예상과 같았나요? ③ 왜 그렇게 됐을까요? ④ 이 원리는 또 어디에서 볼 수 있을까요? 답해 보고 한 문장으로 적어 보세요. <b>「오늘 나는 ______ 원리를 배웠${CORE?`고, 이건 핵심개념 ${CORE}에 해당해요`:"어요"}.」</b> 이 문장으로 가족에게 설명해 보세요. 설명하다 보면 더 또렷해져요.`]
 ];
 
 function sheetHtml(r){
@@ -842,7 +850,7 @@ function sheetHtml(r){
       ${PANELS.map(([t,b],i)=>`<div class="panel">
         <h3>${i+1}. ${t}</h3><p>${b}</p></div>`).join("")}
       ${(m.ekgWave&&m.ekgWave.length)?`<div class="panel">
-        <h3>6. 심전도 읽는 법 <span style="font-size:8.5pt;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:1px 6px;vertical-align:2.5px;letter-spacing:-.01em">보기 그림</span></h3>
+        <h3>${PANELS.length+1}. 심전도 읽는 법 <span style="font-size:8.5pt;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:1px 6px;vertical-align:2.5px;letter-spacing:-.01em">보기 그림</span></h3>
         <p><b>교과서에 나오는 그림입니다. 내 기록이 아니에요.</b> ${EKG_NOTE}</p>
         ${ekgChart(refWave(),{theme:"paper",h:250,zoom:true,annotate:true})}
         <p class="cap">가로는 시간, 세로는 전압입니다.
@@ -1923,12 +1931,23 @@ function renderRecords(){
     box.innerHTML=`<div class="empty"><p>아직 접수된 사람이 없습니다.</p><p>문진 탭에서 시작하세요.</p></div>`;
     return;
   }
-  const rows=[...recs].reverse().map(r=>{
+  // 찾기: 번호(A012 · 12)나 이름 일부. 300명이 되면 늘어놓기만 해서는 못 찾는다
+  const q=(document.getElementById("recFind").value||"").trim().toUpperCase();
+  const list=[...recs].reverse().filter(r=>!q
+    || r.id.toUpperCase().includes(q)
+    || (/^\d+$/.test(q) && r.seq===Number(q))
+    || String(r.name||"").toUpperCase().includes(q));
+  if(!list.length){
+    box.innerHTML=`<div class="empty"><p>「${escapeHtml(q)}」 에 맞는 사람이 없습니다.</p></div>`;
+    return;
+  }
+  const rows=list.map(r=>{
     const j=judge(r), m=r.m||{};
     const grip=(m.grip&&m.grip!=="skip")?[m.grip.l,m.grip.r].filter(v=>v!=null).join("/"):"—";
     return `<tr>
       <td class="n">${r.id}</td>
       <td>${escapeHtml(r.name)}</td>
+      <td class="pr"><button class="btn sm" data-lab="${escapeHtml(r.id)}">번호표</button><button class="btn sm" data-sheet="${escapeHtml(r.id)}">결과지</button></td>
       <td class="n">${r.age}</td>
       <td>${r.sex}</td>
       <td class="n">${(m.hr&&m.hr!=="skip"&&m.hr.bpm)||"—"}</td>
@@ -1939,9 +1958,17 @@ function renderRecords(){
     </tr>`;
   }).join("");
   box.innerHTML=`<div class="scroll"><table>
-    <thead><tr><th>번호</th><th>이름</th><th>나이</th><th>성별</th><th>BPM</th><th>악력</th><th>반응(ms)</th><th>EKG</th><th>판정</th></tr></thead>
+    <thead><tr><th>번호</th><th>이름</th><th>인쇄</th><th>나이</th><th>성별</th><th>BPM</th><th>악력</th><th>반응(ms)</th><th>EKG</th><th>판정</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
+
+/* 기록 탭에서 바로 번호표·결과지를 뽑는다. 측정 입력 탭에서 조회하는 단계를 건너뛴다 */
+document.getElementById("recordBody").addEventListener("click",e=>{
+  const b=e.target.closest("[data-lab],[data-sheet]"); if(!b) return;
+  const r=recs.find(x=>x.id===(b.dataset.lab||b.dataset.sheet)); if(!r) return;
+  if(b.dataset.lab) printLabel(r); else printSheet(r);
+});
+document.getElementById("recFind").addEventListener("input",renderRecords);
 
 const CSV_COLS=[
   ["id","접수번호"],["day","일차"],["at","시각"],["name","이름"],["age","나이"],["sex","성별"],
