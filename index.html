@@ -1576,25 +1576,25 @@ function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;",
    예측 → 측정 → 비교가 이 부스가 가르치려는 것이고, 틀리는 순간이 제일 재밌다.
    g 는 예상값. 다른 칸과 똑같이 m[항목][칸] 으로 저장된다. */
 const MEAS=[
-  {k:"hr",    n:"심박수",    calc:"hr",
+  {k:"hr",    n:"심박수",    calc:"hr",   // 실제 칸은 심전도 파일을 넣으면 PASCO 심박으로 채워진다
    fields:[{k:"g",lab:"예상은?",unit:"회/분"},{k:"bpm",lab:"실제",unit:"회/분"}]},
   {k:"grip",  n:"악력",      calc:"grip",
    fields:[{k:"g",lab:"예상은?",unit:"kg"},{k:"l",lab:"왼손",unit:"kg"},{k:"r",lab:"오른손",unit:"kg"}]},
   {k:"react", n:"반응속도",  fields:[{k:"a",lab:"1회",unit:"cm"},{k:"b",lab:"2회",unit:"cm"},{k:"c",lab:"3회",unit:"cm"}], calc:"react"},
   {k:"eye",   n:"우세눈",    pick:[["왼쪽","L"],["오른쪽","R"]]},
-  {k:"ekg",   n:"EKG",       pick:[["측정함","Y"],["안 함","N"]]},
-  {k:"bp",    n:"혈압",      opt:true, fields:[{k:"s",lab:"수축기",unit:"mmHg"},{k:"d",lab:"이완기",unit:"mmHg"}]}
+  {k:"ekg",   n:"EKG",       pick:[["측정함","Y"],["안 함","N"]]}
 ];
 
 /* 기획서 07-1 — 스테이션 입력 태블릿 3대.
    담당 항목만 띄워야 오입력이 줄고 입력이 빨라진다. */
 const STATIONS=[
   {k:"all",  n:"전체",        g:null},
-  {k:"vital",n:"혈압·EKG",    g:["bp","hr","ekg"]},
   {k:"grip", n:"악력·우세눈", g:["grip","eye"]},
+  {k:"ekg",  n:"EKG",         g:["hr","ekg"]},
   {k:"react",n:"순발력",      g:["react"]}
 ];
 function stationGroups(){
+  if(cfg.station==="vital") cfg.station="ekg";        // 혈압·EKG 자리였던 기기
   const st=STATIONS.find(x=>x.k===(cfg.station||"all"))||STATIONS[0];
   return st.g ? MEAS.filter(m=>st.g.includes(m.k)) : MEAS;
 }
@@ -1757,8 +1757,12 @@ function applyEkgText(text, name){
   target.m.ekgWave=g.wave; target.m.ekgRaw=g.raw;
   target.m.ekgSec=g.sec;
   target.m.ekgBpm=p.devBpm || g.bpm || undefined;
+  // 혈압계가 빠져 심박은 심전도에서 받는다. CSV 의 심박동율 열 평균(없으면 파형에서 센 값)을
+  // 심박수 '실제' 칸에 넣는다. 다시 올리면 새 값으로 바뀐다. 예상 칸은 그대로 둔다
+  const h=target.m.hr;
+  if(target.m.ekgBpm) target.m.hr={...(h && h!=="skip" ? h : {}), bpm:target.m.ekgBpm};
   renderMeasure();
-  toast(`${name?name+" · ":""}${g.full.toFixed(1)}초 중 가장 깨끗한 ${g.sec.toFixed(1)}초를 담았습니다`);
+  toast(`${name?name+" · ":""}${g.full.toFixed(1)}초 중 가장 깨끗한 ${g.sec.toFixed(1)}초를 담았습니다${target.m.ekgBpm?` · 평균 심박 ${target.m.ekgBpm}회/분 입력`:""}`);
 }
 function loadEkgFile(file){
   if(!file || !target) return;
@@ -1786,6 +1790,8 @@ function renderMeasure(){
     h+=`<div class="mgroup" data-g="${g.k}">
       <h3><span>${g.n}${g.opt?' <span class="meta" style="font-size:13px;color:var(--ink3)">선택</span>':""}${val&&!skipped?'<span class="done">입력됨</span>':""}</span>
       <button class="skip ${skipped?"on":""}" data-skip="${g.k}">${skipped?"미측정":"건너뛰기"}</button></h3>`;
+    if(g.k==="hr")
+      h+=`<div class="hint" style="margin-bottom:7px">재기 전에 <b>예상</b>만 넣으세요. <b>실제</b>는 아래 EKG에 CSV를 넣으면 평균 심박이 자동으로 들어갑니다</div>`;
     if(g.k==="grip"){
       // 학생 폰에만 뜨는 참고줄이다. 방문객 화면·결과지에는 안 나간다
       const nm=gripNorm(r.age, r.sex);
