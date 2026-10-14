@@ -279,24 +279,10 @@ body.board #board{display:flex}
 #toast.on{transform:translate(-50%,0);opacity:1}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
-/* ── 라벨 인쇄 · DK-22212 62mm 연속 × 35mm ── */
+/* ── 라벨 인쇄 · DK-22212 62mm 연속. 인쇄 규칙은 applyLabelCss() 가 #labelCss 에 넣는다 ── */
 #label{display:none}
-@media print{
-  @page{size:62mm 35mm;margin:0}
-  html,body{background:#fff!important;padding:0;margin:0}
-  body>*{display:none!important}
-  #label{display:block!important;width:62mm;height:35mm;padding:2.4mm 2.6mm;color:#000;
-    font-family:"Noto Sans KR",sans-serif;position:relative;overflow:hidden;background:#fff}
-  #label .lt{font-size:2.5mm;font-weight:500}
-  #label .ln{font-family:"IBM Plex Mono",monospace;font-size:9.4mm;font-weight:600;line-height:1;margin-top:1.4mm;letter-spacing:.02em}
-  #label .lw{font-size:3.1mm;margin-top:1.6mm;font-weight:500}
-  #label .ld{font-size:2.5mm;margin-top:.9mm;color:#333}
-  #label .lq{position:absolute;right:2.4mm;top:2.4mm;width:21mm;height:21mm}
-  #label .lq svg{display:block;width:100%;height:100%}
-  #label .lf{position:absolute;right:2.4mm;bottom:2.2mm;width:21mm;text-align:center;font-size:2.2mm;color:#444}
-  #label .tip{display:none!important}
-}
 </style>
+<style id="labelCss"></style>
 </head>
 <body>
 
@@ -372,9 +358,13 @@ body.board #board{display:flex}
   </div>
   <div class="q">
     <label>라벨 인쇄</label>
-    <span class="hint" style="display:block;margin:-6px 0 10px;font-size:13.5px;color:var(--ink3)">브라더 QL-820NWB · DK-22212 62mm 연속 · 길이 35mm</span>
+    <span class="hint" style="display:block;margin:-6px 0 10px;font-size:13.5px;color:var(--ink3)">브라더 QL-820NWB · DK-22212 62mm 연속</span>
     <div class="opts" id="printOpts"></div>
     <p class="hint" id="printHint" style="margin-top:8px;font-size:13.5px;line-height:1.6;color:var(--ink2)"></p>
+  </div>
+  <div class="q">
+    <label>번호표 모양</label>
+    <div class="opts c2" id="labelFmtOpts"></div>
   </div>
   <div class="tools" style="margin-top:14px">
     <button class="btn sm" id="btnTestLabel">라벨 시험 인쇄</button>
@@ -387,8 +377,9 @@ body.board #board{display:flex}
     페이지를 내려받아 노트북에서 직접 열면 정상 동작합니다. 급하면 <b>라벨 파일로 저장</b> 후 그 파일을 열어 인쇄하세요.
   </div>
   <div class="note" style="margin-top:10px">
-    프린터 속성에서 용지를 <b>62mm 연속</b>, 길이 <b>35mm</b>, 여백 0으로 맞추세요.
-    인쇄 대화상자에서 <b>배율 100%</b>와 <b>머리글·바닥글 끄기</b>도 확인해야 합니다.
+    프린터 속성에서 용지를 <b>62mm 연속</b>, 길이 <b id="labelLenTxt">28mm</b>, 여백 0으로 맞추세요.
+    인쇄 대화상자에서 <b>배율 100%</b>, <b>여백 없음</b>, <b>머리글 및 바닥글 끄기</b>도 확인해야 합니다.
+    머리글·바닥글을 켜 두면 위아래에 날짜·제목·사이트 주소가 같이 찍힙니다.
     크롬을 <b>--kiosk-printing</b> 옵션으로 실행하면 대화상자 없이 바로 뽑힙니다.
   </div>
   <div class="tools" style="margin-top:22px">
@@ -586,44 +577,92 @@ function qrFor(id, name){
 }
 
 /* ═══════ 라벨 인쇄 ═══════ */
+/* DK-22212 는 폭 62mm 연속 롤이다. 폭은 정해져 있고 길이만큼 닳는다.
+   세로(기본): 62mm 를 세로로 쓰고 길이 28mm. 내용을 90° 돌려 찍는다.
+   프린터 쪽에서 보면 그냥 62×28mm 용지다. 가로: 예전 62×35mm.
+   길이를 더 줄이려면 QR(21mm)부터 줄여야 하는데, 그러면 스캔이 나빠진다 */
+const LABEL_FMT={ v:{len:28, n:"세로 · 길이 28mm"}, h:{len:35, n:"가로 · 길이 35mm"} };
+const labelFmt=()=>cfg.labelFmt==="h" ? "h" : "v";
+const labelLen=()=>LABEL_FMT[labelFmt()].len;
+
 function labelHtml(r){
   const d=new Date(r.at||Date.now());
   const ymd=`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
-  return `<div class="lt">영남고 건강검진센터</div>
+  if(labelFmt()==="h") return `<div class="lt">영남고 건강검진센터</div>
     <div class="ln">${escapeHtml(r.id)}</div>
     <div class="lw">${escapeHtml(r.name)} · ${r.age}세 · ${escapeHtml(r.sex)}</div>
     <div class="ld">${ymd} · ${r.day}일차 · 혈액형 ${escapeHtml(r.blood)}</div>
     <div class="lq">${qrFor(r.id, r.name)}</div>
     <div class="lf">스캔하면 결과</div>`;
+  return `<div class="rot">
+    <div class="vt">영남고 건강검진센터</div>
+    <div class="vq">${qrFor(r.id, r.name)}</div>
+    <div class="vf">스캔하면 결과</div>
+    <div class="vn">${escapeHtml(r.id)}</div>
+    <div class="vw">${escapeHtml(r.name)}</div>
+    <div class="vd">${r.age}세 · ${escapeHtml(r.sex)} · 혈액형 ${escapeHtml(r.blood)}</div>
+    <div class="vd">${ymd} · ${r.day}일차</div>
+  </div>`;
 }
 
-const LABEL_CSS = `
-  @page{size:62mm 35mm;margin:0}
-  *{box-sizing:border-box}
+// 번호표 한 장의 모양. 새 창 인쇄(.label)와 이 페이지 인쇄(#label)가 같이 쓴다
+function labelRules(sel){
+  const L=labelLen();
+  const base=`${sel}{width:62mm;height:${L}mm;color:#000;background:#fff;box-sizing:border-box;
+      font-family:"Noto Sans KR","Malgun Gothic",sans-serif;position:relative;overflow:hidden}
+    ${sel} *{box-sizing:border-box}
+    ${sel} svg{display:block;width:100%;height:100%}`;
+  if(labelFmt()==="h") return base+`
+    ${sel}{padding:2.4mm 2.6mm}
+    ${sel} .lt{font-size:2.5mm;font-weight:500}
+    ${sel} .ln{font-family:"Consolas","IBM Plex Mono",monospace;font-size:9.4mm;font-weight:700;
+      line-height:1;margin-top:1.4mm;letter-spacing:.02em}
+    ${sel} .lw{font-size:3.1mm;margin-top:1.6mm;font-weight:500}
+    ${sel} .ld{font-size:2.5mm;margin-top:.9mm;color:#333}
+    ${sel} .lq{position:absolute;right:2.4mm;top:2.4mm;width:21mm;height:21mm}
+    ${sel} .lf{position:absolute;right:2.4mm;bottom:2.2mm;width:21mm;text-align:center;font-size:2.2mm;color:#444}`;
+  // 세로: 길이 L × 62 상자를 그려 놓고 왼쪽으로 눕힌다
+  return base+`
+    ${sel} .rot{position:absolute;left:0;top:0;width:${L}mm;height:62mm;padding:2.6mm 2mm;
+      transform-origin:0 0;transform:translateY(${L}mm) rotate(-90deg);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+    ${sel} .vt{font-size:2.4mm;font-weight:500;white-space:nowrap}
+    ${sel} .vq{width:21mm;height:21mm;margin-top:1mm;flex:none}
+    ${sel} .vf{font-size:2mm;color:#444;margin-top:.3mm}
+    ${sel} .vn{font-family:"Consolas","IBM Plex Mono",monospace;font-size:8.4mm;font-weight:700;
+      line-height:1;margin-top:2.4mm;letter-spacing:.02em}
+    ${sel} .vw{font-size:3.6mm;font-weight:700;margin-top:2mm;max-width:100%;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    ${sel} .vd{font-size:2.3mm;color:#222;margin-top:.8mm;white-space:nowrap}`;
+}
+function labelDocCss(){
+  return `@page{size:62mm ${labelLen()}mm;margin:0}
   html,body{margin:0;padding:0;background:#fff}
-  .label{width:62mm;height:35mm;padding:2.4mm 2.6mm;color:#000;background:#fff;
-    font-family:"Noto Sans KR","Malgun Gothic",sans-serif;position:relative;overflow:hidden}
-  .lt{font-size:2.5mm;font-weight:500}
-  .ln{font-family:"Consolas","IBM Plex Mono",monospace;font-size:9.4mm;font-weight:700;
-    line-height:1;margin-top:1.4mm;letter-spacing:.02em}
-  .lw{font-size:3.1mm;margin-top:1.6mm;font-weight:500}
-  .ld{font-size:2.5mm;margin-top:.9mm;color:#333}
-  .lq{position:absolute;right:2.4mm;top:2.4mm;width:21mm;height:21mm}
-  .lq svg{display:block;width:100%;height:100%}
-  .lf{position:absolute;right:2.4mm;bottom:2.2mm;width:21mm;text-align:center;font-size:2.2mm;color:#444}
+  ${labelRules(".label")}
   @media screen{
     body{background:#eee;padding:18px;font-family:sans-serif}
     .label{box-shadow:0 2px 12px rgba(0,0,0,.25);margin:0 auto}
     .tip{max-width:62mm;margin:14px auto 0;font-size:12px;color:#555;line-height:1.6;text-align:center}
   }
-  @media print{ .tip{display:none} }
-`;
+  @media print{ .tip{display:none} }`;
+}
+// 이 페이지 안에서 찍을 때(인쇄 담당). 용지 길이가 설정에 따라 바뀌어서 고정 CSS 로 못 둔다
+function applyLabelCss(){
+  const el=document.getElementById("labelCss"); if(!el) return;
+  el.textContent=`@media print{
+    @page{size:62mm ${labelLen()}mm;margin:0}
+    html,body{background:#fff!important;padding:0;margin:0}
+    body>*{display:none!important}
+    #label{display:block!important}
+    ${labelRules("#label")}
+  }`;
+}
 
 function printLabel(r){
   const body=`<div class="label">${labelHtml(r)}</div>
-    <div class="tip">인쇄가 자동으로 뜨지 않으면 Ctrl+P를 누르세요.<br>용지 62mm 연속 · 길이 35mm · 여백 0 · 배율 100%</div>`;
+    <div class="tip">인쇄가 자동으로 뜨지 않으면 Ctrl+P를 누르세요.<br>용지 62mm 연속 · 길이 ${labelLen()}mm · 여백 0 · 배율 100%</div>`;
   const doc=`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">
-    <title>${escapeHtml(r.id)} 번호표</title><style>${LABEL_CSS}</style></head>
+    <title>${escapeHtml(r.id)} 번호표</title><style>${labelDocCss()}</style></head>
     <body>${body}<script>window.onload=function(){setTimeout(function(){window.focus();window.print();},250);};<\/script></body></html>`;
 
   // 1순위: 새 창에서 인쇄
@@ -636,7 +675,7 @@ function printLabel(r){
   // 2순위: 같은 창에서 인쇄 시도
   lastLabelDoc=doc;
   const el=document.getElementById("label");
-  el.innerHTML=body;
+  el.innerHTML=labelHtml(r);
   let printed=false;
   try{ window.print(); printed=true; }catch(e){}
   if(!printed) toast("인쇄 창이 막혔습니다. 설정 탭에서 라벨을 내려받으세요");
@@ -684,7 +723,7 @@ let lastLabelDoc=null;
 function downloadLabel(r){
   const doc=lastLabelDoc||(function(){
     return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(r.id)}</title>
-      <style>${LABEL_CSS}</style></head><body><div class="label">${labelHtml(r)}</div></body></html>`;
+      <style>${labelDocCss()}</style></head><body><div class="label">${labelHtml(r)}</div></body></html>`;
   })();
   download(`label_${r.id}.html`, doc, "text/html;charset=utf-8");
 }
@@ -2522,12 +2561,20 @@ function renderAdmin(){
     `<label class="opt ${printMode()==="hub"?"sel":""}" data-print="hub">인쇄 담당 · 모든 기기 접수를 여기서</label>
      <label class="opt ${printMode()==="self"?"sel":""}" data-print="self">이 기기에서 접수한 것만</label>
      <label class="opt ${printMode()==="off"?"sel":""}" data-print="off">인쇄 안 함</label>`;
+  document.getElementById("labelFmtOpts").innerHTML=Object.entries(LABEL_FMT).map(([k,f])=>
+    `<label class="opt ${labelFmt()===k?"sel":""}" data-lfmt="${k}">${f.n}</label>`).join("");
+  document.getElementById("labelLenTxt").textContent=labelLen()+"mm";
   document.getElementById("printHint").innerHTML = printMode()==="hub"
     ? `<b>이 기기가 인쇄 담당입니다.</b> 태블릿·폰에서 접수하면 몇 초 안에 여기서 번호표가 나옵니다.
        인쇄 담당은 <b>한 대만</b> 두세요. 두 대면 번호표가 두 장 나옵니다.
        이 탭을 앞에 띄워 두고, 노트북이 잠들지 않게 하세요.`
     : printMode()==="off" ? "접수하는 태블릿·폰은 이걸로 두세요. 인쇄는 인쇄 담당 노트북이 합니다." : "";
 }
+document.getElementById("labelFmtOpts").addEventListener("click",e=>{
+  const p=e.target.closest("[data-lfmt]"); if(!p) return;
+  cfg.labelFmt=p.dataset.lfmt; saveCfg(); applyLabelCss(); renderAdmin();
+  toast(`번호표 길이 ${labelLen()}mm. 프린터 용지 길이도 바꿔 주세요`);
+});
 document.getElementById("printOpts").addEventListener("click",e=>{
   const p=e.target.closest("[data-print]"); if(!p) return;
   const m=p.dataset.print;
@@ -2600,7 +2647,7 @@ renderStep();
 renderMeasure();
 
 if(BOARD) startBoard();
-hubTag();
+hubTag(); applyLabelCss();
 
 /* ═══════ 서버 연결 ═══════ */
 function connectFB(){
