@@ -304,6 +304,7 @@ body.board #board{display:flex}
   <div class="bar">
     <div class="mark"><b>BIO-DATA 탐사대</b><span>심장의 전기 신호를 데이터 모델로 읽어내기</span></div>
     <div class="dev mono" id="devTag">A</div>
+    <div class="dev" id="hubTag" hidden title="이 기기가 모든 접수의 번호표를 뽑습니다">인쇄 담당</div>
     <div class="dev" id="netTag" title="동기화 상태">연결 중</div>
   </div>
   <nav role="tablist">
@@ -372,7 +373,8 @@ body.board #board{display:flex}
   <div class="q">
     <label>라벨 인쇄</label>
     <span class="hint" style="display:block;margin:-6px 0 10px;font-size:13.5px;color:var(--ink3)">브라더 QL-820NWB · DK-22212 62mm 연속 · 길이 35mm</span>
-    <div class="opts c2" id="printOpts"></div>
+    <div class="opts" id="printOpts"></div>
+    <p class="hint" id="printHint" style="margin-top:8px;font-size:13.5px;line-height:1.6;color:var(--ink2)"></p>
   </div>
   <div class="tools" style="margin-top:14px">
     <button class="btn sm" id="btnTestLabel">라벨 시험 인쇄</button>
@@ -548,7 +550,7 @@ function mergeRemote(list){
     remoteUpd.set(rm.id, rm.upd||0);
     const lo=byId.get(rm.id);
     const mark=()=>{ if((rm.upd||0)>=newestUpd){ newestUpd=rm.upd||0; newest=rm.id; } };
-    if(!lo){ recs.push(rm); byId.set(rm.id,rm); changed=true; mark(); return; }
+    if(!lo){ recs.push(rm); byId.set(rm.id,rm); changed=true; mark(); hubEnqueue(rm); return; }
     if((rm.upd||0) > (lo.upd||0)){ Object.assign(lo,rm); changed=true; mark(); }
   });
   if(changed && newest && BOARD) flashPoint(newest);
@@ -638,6 +640,44 @@ function printLabel(r){
   let printed=false;
   try{ window.print(); printed=true; }catch(e){}
   if(!printed) toast("인쇄 창이 막혔습니다. 설정 탭에서 라벨을 내려받으세요");
+}
+
+/* ═══════ 인쇄 담당 ═══════
+   태블릿·폰에서 접수하면 Firestore 로 이 노트북에 기록이 들어온다. 그 순간 번호표를 뽑는다.
+   - 새 창 대신 이 페이지 안에서 인쇄한다. 사람이 누르지 않은 인쇄는 새 창이 막히기 때문이다
+   - 대화상자 없이 바로 나오려면 크롬을 --kiosk-printing 으로 켜야 한다
+   - 이미 뽑은 번호는 기억해 두고 다시 뽑지 않는다(새로고침해도)
+   - 인쇄 담당으로 바꾼 뒤에 접수된 것, 10분 안의 것만 뽑는다.
+     처음 켠 노트북이 서버의 300명을 한꺼번에 뽑는 일을 막는다 */
+const PRINTED="biodata.printed.v1";
+const printMode=()=>cfg.printMode || (cfg.autoPrint===false ? "off" : "self");
+function printedSet(){ try{ return new Set(JSON.parse(localStorage.getItem(PRINTED)||"[]")); }catch(e){ return new Set(); } }
+function markPrinted(id){ const s=printedSet(); s.add(id);
+  try{ localStorage.setItem(PRINTED, JSON.stringify([...s].slice(-800))); }catch(e){} }
+const hubQueue=[]; let hubBusy=false;
+function hubWants(r){
+  if(printMode()!=="hub" || !r || !r.id || !r.name) return false;
+  const t=Date.parse(r.at||""); if(!t) return false;
+  if(t < (cfg.hubSince||0) - 60000) return false;          // 기기 시계가 조금 달라도 1분은 봐준다
+  if(Date.now()-t > 10*60000) return false;
+  return !printedSet().has(r.id) && !hubQueue.some(x=>x.id===r.id);
+}
+function hubEnqueue(r){ if(!hubWants(r)) return; hubQueue.push(r); hubTag(); hubNext(); }
+function hubNext(){
+  if(hubBusy || !hubQueue.length) return;
+  hubBusy=true;
+  const r=hubQueue.shift();
+  markPrinted(r.id);                                         // 먼저 적어 둔다. 두 번 나오는 쪽이 더 곤란하다
+  const el=document.getElementById("label");
+  el.innerHTML=labelHtml(r);
+  toast(`${r.id} ${r.name} 번호표 인쇄`);
+  try{ window.print(); }catch(e){ toast("인쇄가 막혔습니다. 기록 탭에서 다시 뽑으세요"); }
+  setTimeout(()=>{ hubBusy=false; hubTag(); hubNext(); }, 1500);   // 장마다 1.5초. 커터가 자르는 시간
+}
+function hubTag(){
+  const el=document.getElementById("hubTag"); if(!el) return;
+  el.hidden = printMode()!=="hub";
+  el.textContent = hubQueue.length ? `인쇄 대기 ${hubQueue.length}` : "인쇄 담당";
 }
 
 let lastLabelDoc=null;
@@ -1463,7 +1503,8 @@ async function finishIntake(){
   recs.push(touch(rec)); saveAll(rec);
   showTicket(rec);
   if(no.spare) toast(`인터넷이 끊겨 예비 번호 ${id} 로 냈습니다`);
-  if(cfg.autoPrint) printLabel(rec);
+  if(printMode()==="hub") hubEnqueue(rec);
+  else if(printMode()==="self") printLabel(rec);
 }
 
 /* ═══════ 접수증 ═══════ */
@@ -2453,12 +2494,21 @@ function renderAdmin(){
   document.getElementById("dayOpts").innerHTML=[1,2].map(d=>
     `<label class="opt ${cfg.day===d?"sel":""}" data-day="${d}">${d}일차</label>`).join("");
   document.getElementById("printOpts").innerHTML=
-    `<label class="opt ${cfg.autoPrint?"sel":""}" data-print="1">접수하면 바로 인쇄</label>
-     <label class="opt ${!cfg.autoPrint?"sel":""}" data-print="0">인쇄 안 함</label>`;
+    `<label class="opt ${printMode()==="hub"?"sel":""}" data-print="hub">인쇄 담당 · 모든 기기 접수를 여기서</label>
+     <label class="opt ${printMode()==="self"?"sel":""}" data-print="self">이 기기에서 접수한 것만</label>
+     <label class="opt ${printMode()==="off"?"sel":""}" data-print="off">인쇄 안 함</label>`;
+  document.getElementById("printHint").innerHTML = printMode()==="hub"
+    ? `<b>이 기기가 인쇄 담당입니다.</b> 태블릿·폰에서 접수하면 몇 초 안에 여기서 번호표가 나옵니다.
+       인쇄 담당은 <b>한 대만</b> 두세요. 두 대면 번호표가 두 장 나옵니다.
+       이 탭을 앞에 띄워 두고, 노트북이 잠들지 않게 하세요.`
+    : printMode()==="off" ? "접수하는 태블릿·폰은 이걸로 두세요. 인쇄는 인쇄 담당 노트북이 합니다." : "";
 }
 document.getElementById("printOpts").addEventListener("click",e=>{
   const p=e.target.closest("[data-print]"); if(!p) return;
-  cfg.autoPrint=p.dataset.print==="1"; saveCfg(); renderAdmin();
+  const m=p.dataset.print;
+  cfg.printMode=m; cfg.autoPrint=(m!=="off");
+  if(m==="hub") cfg.hubSince=Date.now();      // 이 순간 뒤에 접수된 것만 뽑는다
+  saveCfg(); renderAdmin(); hubTag();
 });
 const SAMPLE=()=>({id:SHARED_DEV+"001",name:"홍길동",age:14,sex:"남",blood:"O",day:cfg.day,at:new Date().toISOString()});
 const SHEET_SAMPLE=()=>({...SAMPLE(), glass:"씀", symp:["두통","눈의 피로"],
@@ -2525,6 +2575,7 @@ renderStep();
 renderMeasure();
 
 if(BOARD) startBoard();
+hubTag();
 
 /* ═══════ 서버 연결 ═══════ */
 function connectFB(){
