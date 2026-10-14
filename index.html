@@ -757,6 +757,22 @@ const SHEET_CSS = `
    초등학생이 읽을 수 있게 짧은 문장으로 쓴다. */
 /* 핵심개념. 주최측이 정해 주면 여기와 staff.html 의 CORE 를 같이 바꾼다.
    비어 있으면 결과지 문장에서 핵심개념 부분을 뺀다 — 종이에 "○○" 가 찍혀 나가지 않게 */
+// 결과지 뒷면 "심전도 읽는 법" 옆의 심장 그림. 방 네 개만 그린 보기 그림이다.
+// P·QRS 딱지는 옆 파형의 딱지와 같은 글자다 — 어느 방이 어느 봉우리인지 잇는다.
+function heartSvg(){
+  const ln="#111", a="#f2c3bb", v="#e08d7c", t="#111";
+  const txt=(x,y,s,w,c)=>`<text x="${x}" y="${y}" font-size="${s}" font-weight="${w}" fill="${c||t}" text-anchor="middle" font-family="sans-serif">`;
+  return `<svg viewBox="0 16 300 248" style="width:100%;aspect-ratio:300/248;display:block" role="img" aria-label="심장 그림: 위쪽 작은 방 두 개가 심방, 아래쪽 큰 방 두 개가 심실">
+    <rect x="52" y="22" width="92" height="72" rx="30" fill="${a}" stroke="${ln}" stroke-width="3"/>
+    <rect x="156" y="22" width="92" height="72" rx="30" fill="${a}" stroke="${ln}" stroke-width="3"/>
+    <path d="M44,104 H256 C266,172 206,226 150,258 C94,226 34,172 44,104 Z" fill="${v}" stroke="${ln}" stroke-width="3"/>
+    <line x1="150" y1="104" x2="150" y2="250" stroke="${ln}" stroke-width="3"/>
+    ${txt(98,58,24,700)}심방</text>${txt(98,84,17,700,"#555")}P</text>
+    ${txt(202,58,24,700)}심방</text>${txt(202,84,17,700,"#555")}P</text>
+    ${txt(100,160,30,700)}심실</text>${txt(100,190,17,700,"#555")}QRS·T</text>
+    ${txt(200,160,30,700)}심실</text>${txt(200,190,17,700,"#555")}QRS·T</text>
+  </svg>`;
+}
 const CORE="";
 const PANELS=[
  ["팔에 붙였는데 왜 심장 신호가 잡힐까",
@@ -892,7 +908,10 @@ function sheetHtml(r){
       ${(m.ekgWave&&m.ekgWave.length)?`<div class="panel">
         <h3>${PANELS.length+1}. 심전도 읽는 법 <span style="font-size:8.5pt;font-weight:700;color:#fff;background:#777;border-radius:3px;padding:1px 6px;vertical-align:2.5px;letter-spacing:-.01em">보기 그림</span></h3>
         <p><b>교과서에 나오는 그림입니다. 내 기록이 아니에요.</b> ${EKG_NOTE}</p>
-        ${ekgChart(refWave(),{theme:"paper",h:250,zoom:true,annotate:true})}
+        <div style="display:flex;gap:4mm;align-items:center">
+          <div style="flex:1 1 0;min-width:0">${ekgChart(refWave(),{theme:"paper",h:250,zoom:true,annotate:true})}</div>
+          <div style="flex:0 0 30%">${heartSvg()}</div>
+        </div>
         <p class="cap">가로는 시간, 세로는 전압입니다.
           봉우리 사이 칸 수를 세면 심장이 몇 번 뛰는지 알 수 있습니다.
           <b>앞면의 내 파형을 이 보기와 견주어 보세요.</b>
