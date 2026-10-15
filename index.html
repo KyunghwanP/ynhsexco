@@ -621,8 +621,10 @@ function labelRules(sel){
     ${sel} .lq{position:absolute;right:2.4mm;top:2.4mm;width:21mm;height:21mm}
     ${sel} .lf{position:absolute;right:2.4mm;bottom:2.2mm;width:21mm;text-align:center;font-size:2.2mm;color:#444}`;
   // 나란히: QR 왼쪽(오른쪽 끝은 인쇄 폭 밖이라 잘릴 수 있다), 글자 오른쪽
+  // flex 에 !important 가 붙은 까닭: 인쇄 담당은 #label 을 display:block!important 로 꺼내 보인다.
+  // 그게 이기면 글자가 QR 밑으로 내려가 잘린다(시험 인쇄는 멀쩡하고 태블릿 접수만 잘렸다)
   return base+`
-    ${sel}{padding:2mm 2.8mm;display:flex;align-items:center;gap:2.8mm}
+    ${sel}{padding:2mm 2.8mm;display:flex!important;align-items:center;gap:2.8mm}
     ${sel} .cq{width:21mm;height:21mm;flex:none}
     ${sel} .ci{flex:1;min-width:0}
     ${sel} .cn{font-family:"Consolas","IBM Plex Mono",monospace;font-size:8.6mm;font-weight:700;
